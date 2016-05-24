@@ -15,6 +15,9 @@
 #include "EmulNet.h"
 #include "Queue.h"
 
+#include <unordered_set>
+#include <set>
+
 /**
  * Macros
  */
@@ -28,9 +31,10 @@
 /**
  * Message Types
  */
-enum MsgTypes{
+enum MsgTypes {
     JOINREQ,
     JOINRSP,
+    ADD_MEMBERS_REQ
 };
 
 #define ESUCCESS 0
@@ -52,7 +56,7 @@ struct JoinResponse {
     int16_t msgType;
     int32_t id;
     int16_t port;
-    // int64_t heartbeat;
+    int64_t heartbeat;
     uint64_t membersCount;
 };
 
@@ -62,6 +66,13 @@ struct MemberData {
     int64_t heartbeat;
 };
 
+struct AddMembersReq {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+    uint64_t membersCount;
+};
 
 /**
  * CLASS NAME: MP1Node
@@ -78,42 +89,54 @@ public:
     int     join(Address *joinAddress);
     int     finishUpThisNode();
 
-    int32_t getId(Address &a);
-    int16_t getPort(Address &a);
-    Address getAddress(int32_t id, int16_t port);
-	Member* getMemberNode() { return memberNode; }
+    int32_t getId();
+    int16_t getPort();
     int64_t getHeartbeat();
+    long    getTimestamp();
+	Member* getMemberNode() { return memberNode; }
+
+    using MembersList = decltype( ((Member*)0)->memberList );
+    MembersList &getMembersList() {
+        return memberNode->memberList;
+    }
 
 
+    void    nodeStart(char *servaddrstr, short serverport);
     void    nodeLoop();
 	void    handleIngress();
     void    handleNodeOperations();
 
     void    handleJoinRequest(void *rawReq);
     void    handleJoinResponse(void *rawReq);
+    void    handleAddMembersRequest(void *rawReq);
+    void    handleMembersData(char *buff, uint64_t count);
 
     int     recvCallBack(void *env, char *data, int size);
     int     recvLoop();
-
-	static int enqueueWrapper(void *env, char *buff, int size);
-	void nodeStart(char *servaddrstr, short serverport);
-	void checkMessages();
-	int isNullAddress(Address *addr);
-	Address getJoinAddress();
-	void printAddress(Address *addr);
+    int     send(Address addr, char *data, size_t len);
 
 private:
     void    prepareJoinResponseHeader(char *buff);
     void    prepareJoinResponsePayload(char *buff);
     void    addMemberEntry(const MemberData &member);
-    size_t  copyMemberEntry(char* buff, const MemberListEntry &entry);
 
-private:
-    EmulNet *emulNet;
-    Log *log;
-    Params *par;
-    Member *memberNode;
-    char NULLADDR[6];
+    void    advanceHeartbeat();
+    void    advanceTimestamp();
+
+    Address getJoinAddress();
+    void    printAddress(Address *addr);
+
+// private:
+public:
+    using PeersCache = std::set<int64_t>;
+
+    EmulNet     *emulNet;
+    Log         *log;
+    Params      *par;
+    Member      *memberNode;
+    PeersCache  peersCache;
+    bool        peersChangeDetected = false;
+    long        timestamp = 0;
 };
 
 #endif /* _MP1NODE_H_ */
