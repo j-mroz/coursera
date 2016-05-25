@@ -50,10 +50,10 @@ void Log::LOG(Address *addr, const char * str, ...) {
 	static int numwrites;
 	static char stdstring[30];
 	static char stdstring2[40];
-	static char stdstring3[40]; 
+	static char stdstring3[40];
 	static int dbg_opened=0;
 
-	if(dbg_opened != 639){
+	if(dbg_opened != 639) {
 		numwrites=0;
 
 		stdstring2[0]=0;
@@ -68,7 +68,7 @@ void Log::LOG(Address *addr, const char * str, ...) {
 
 		dbg_opened=639;
 	}
-	else 
+	else
 
 	sprintf(stdstring, "%d.%d.%d.%d:%d ", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3], *(short *)&addr->addr[4]);
 
@@ -90,14 +90,12 @@ void Log::LOG(Address *addr, const char * str, ...) {
 	if(memcmp(buffer, "#STATSLOG#", 10)==0){
 		fprintf(fp2, "\n %s", stdstring);
 		fprintf(fp2, "[%d] ", par->getcurrtime());
-
 		fprintf(fp2, buffer);
 	}
 	else{
 		fprintf(fp, "\n %s", stdstring);
 		fprintf(fp, "[%d] ", par->getcurrtime());
 		fprintf(fp, buffer);
-
 	}
 
 	if(++numwrites >= MAXWRITES){
@@ -125,7 +123,7 @@ void Log::logNodeAdd(Address *thisNode, Address *addedAddr) {
  * DESCRIPTION: To log a node remove
  */
 void Log::logNodeRemove(Address *thisNode, Address *removedAddr) {
-	static char stdstring[30];
-	sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
+	static char stdstring[200];
+	int written = sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
     LOG(thisNode, stdstring);
 }

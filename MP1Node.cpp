@@ -6,6 +6,7 @@
 
 #include <numeric>
 #include <cmath>
+#include <string>
 
 #ifdef DEBUGLOG
 #define debug_log(a, b, ...) do { log->LOG(a, b, ##__VA_ARGS__); } while (0)
@@ -41,6 +42,10 @@ static size_t copyMemberEntry(char *buff, const MemberListEntry &entry) {
     return sizeof(MemberData);
 }
 
+static int64_t toInt64(int32_t id, int16_t port) {
+    return ((int64_t)id << 32) + port;
+}
+
 static int64_t toInt64(const MemberData& member) {
     return ((int64_t)member.id << 32) + member.port;
 }
@@ -61,20 +66,21 @@ size_t MemberListEntryHash::operator()(const MemberListEntry& member) const {
 /**
  *
  */
-class GossipDisseminator {
+class GossipBase {
+protected:
     MP1Node *node;
+    vector<size_t> membersIndices;
 
-public:
-    GossipDisseminator(MP1Node *node) : node(node) { }
-
-    void run() {
-        gossipMembersList();
+    GossipBase(MP1Node *n) {
+        node = n;
     }
 
     vector<size_t> pickGossipGroup() {
-        static auto membersIndices = vector<int>();
+
         auto membersCount = node->getMembersList().size();
-        auto gossipRange = (int64_t)log(membersCount) + 1;
+        auto gossipRange = (int64_t)log(membersCount);
+        if (gossipRange < membersCount)
+            ++gossipRange;
         if (gossipRange < membersCount)
             ++gossipRange;
 
@@ -84,15 +90,42 @@ public:
 
         return vector<size_t>(membersIndices.begin(),
                               membersIndices.begin() + gossipRange);
-
     }
 
-    void gossipMembersList() {
-        size_t membersCount = node->getMembersList().size();
-        size_t reqHeaderSize = sizeof(AddMembersRequest);
-        size_t reqPayloadSize = sizeof(MemberData) * membersCount;
-        vector<char> msgBuff(reqHeaderSize + reqPayloadSize);
+    void sendGossip(const vector<char> &msg) {
+        auto gossipPeers = pickGossipGroup();
+        for (auto peerIndex : gossipPeers) {
+            auto &member = node->getMembersList()[peerIndex];
+            auto memberAddr = makeAddress(member.getid(), member.getport());
+            node->send(move(memberAddr), (char *)msg.data(), msg.size());
+        }
+    }
+};
 
+/**
+ *
+ */
+class GossipDisseminator : public GossipBase {
+    vector<char> msgBuff;
+
+public:
+    GossipDisseminator(MP1Node *node) : GossipBase(node) { }
+
+    void run() {
+        allocateBuffer();
+        prepareHeader();
+        preparePayload();
+        sendGossip(msgBuff);
+    }
+
+    void allocateBuffer() {
+        auto membersCount = node->getMembersList().size();
+        auto reqHeaderSize = sizeof(AddMembersRequest);
+        auto reqPayloadSize = sizeof(MemberData) * membersCount;
+        msgBuff.resize(reqHeaderSize + reqPayloadSize);
+    }
+
+    void prepareHeader() {
         auto req = AddMembersRequest {
             ADD_MEMBERS_REQ,
             node->getId(),
@@ -100,22 +133,39 @@ public:
             node->getHeartbeat(),
             node->getMemberNode()->memberList.size()
         };
+        memcpy(msgBuff.data(), (char *)&req, sizeof(AddMembersRequest));
+    }
 
-        char *buffOffset = msgBuff.data();
-        memcpy(buffOffset, (char*)&req, reqHeaderSize);
-        buffOffset += reqHeaderSize;
-
+    void preparePayload() {
+        auto payload = (char*)msgBuff.data() + sizeof(AddMembersRequest);
         for (auto &entry : node->getMembersList()) {
-            auto copiedBytes = copyMemberEntry(buffOffset, entry);
-            buffOffset += copiedBytes;
+            auto copiedBytes = copyMemberEntry(payload, entry);
+            payload += copiedBytes;
         }
+    }
+};
 
-        auto gossipPeers = pickGossipGroup();
-        for (auto peerIndex : gossipPeers) {
-            auto &member  = node->getMembersList()[peerIndex];
-            node->send(makeAddress(member.getid(), member.getport()),
-                       msgBuff.data(), reqHeaderSize + reqPayloadSize);
-        }
+class HearbeatService : public GossipBase {
+    vector<char> msgBuff;
+
+public:
+    HearbeatService(MP1Node *node) : GossipBase(node) {
+        msgBuff.resize(sizeof(Heartbeat));
+    }
+
+    void run() {
+        prepareHeartbeat();
+        sendGossip(msgBuff);
+    }
+
+    void prepareHeartbeat () {
+        auto heartbeat = Heartbeat {
+            HEARTBEAT,
+            node->getId(),
+            node->getPort(),
+            node->getHeartbeat(),
+        };
+        memcpy(msgBuff.data(), (char *)&heartbeat, sizeof(Heartbeat));
     }
 };
 
@@ -139,15 +189,13 @@ public:
         auto &members = node->getMembersList();
         auto timestamp = node->getTimestamp();
 
-        printf("[" );
+        string line;
         for (auto &member : members) {
-            printf("%ld:%ld ", member.heartbeat, member.timestamp);
             member = node->getCachedEntry(member);  // write from cache
             if (timestamp - member.gettimestamp() >= failTimeout) {
                 node->markFailed(member);
             }
         }
-        printf("]\n" );
     }
 
     void removeFailedMembers() {
@@ -157,13 +205,14 @@ public:
         auto isRemovable = [&](const MemberListEntry& member) {
             return timestamp - member.timestamp >= removeTimeout;
         };
-        auto hardFailedBegin = remove_if(members.begin(), members.end(), isRemovable);
-        auto hardFailedEnd = members.end();
 
-        for (auto peer = hardFailedBegin; peer != hardFailedEnd; ++peer)
-            node->eraseCached(*peer);
+        for (auto &peer : members) {
+            if (isRemovable(peer))
+            node->eraseCached(peer);
+        }
 
-        members.erase(hardFailedBegin, hardFailedEnd);
+        members.erase(remove_if(members.begin(), members.end(), isRemovable),
+                      members.end());
     }
 
 };
@@ -175,7 +224,6 @@ public:
  * is necessary for your logic to work
  */
 MP1Node::MP1Node(Member *member, Params *params, EmulNet *emul, Log *log, Address *address) {
-    // std::fill(NULLADDR, NULLADDR+6, 0);
     this->memberNode = member;
     this->memberNode->addr = *address;
     this->emulNet = emul;
@@ -261,6 +309,10 @@ int MP1Node::finishUpThisNode() {
     return 0;
 }
 
+int queueIngress(void *env, char *buff, int size) {
+    return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
+}
+
 /**
  * This function receives message from the network and pushes into the queue
  * This function is called by a node to receive messages currently waiting for it
@@ -269,9 +321,9 @@ int MP1Node::recvLoop() {
     if (memberNode->bFailed)
         return false;
 
-    auto queueIngress = [&](void *env, char *buff, int size) -> int  {
-        return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
-    };
+    // auto queueIngress = [&](void *env, char *buff, int size) -> int  {
+    //     return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
+    // };
 
     return emulNet->ENrecv(&memberNode->addr, queueIngress,
                            nullptr, 1, &memberNode->mp1q);
@@ -332,7 +384,10 @@ int MP1Node::recvCallBack(void *env, char *data, int size) {
             handle(JoinResponse);
         case ADD_MEMBERS_REQ:
             handle(AddMembersRequest);
+        case HEARTBEAT:
+            handle(Heartbeat);
         default:
+            printf("other req\n");
             break;
     }
 
@@ -415,6 +470,25 @@ void MP1Node::handleMembersData(char *buff, uint64_t count) {
 /**
  *
  */
+void MP1Node::handleHeartbeat(void *rawReq) {
+    auto req = getUnaligned<Heartbeat>(rawReq);
+    failedPeers.erase(MemberListEntry { req.id, req.port, 0, 0 });
+    //debug_log(&memberNode->addr, "Heartbeat from %d:%d", req.id, req.port);
+
+    int64_t hash = toInt64(req.id, req.port);
+    auto peer = peersCache.find(hash);
+    if (peer != peersCache.end()) {
+        peer->second.heartbeat = req.heartbeat;
+        peer->second.timestamp = timestamp;
+    } else {
+        debug_log(&memberNode->addr, "miss from %d:%d", req.id, req.port);
+    }
+}
+
+
+/**
+ *
+ */
 void MP1Node::addMemberEntry(const MemberData &member) {
     auto memberEntry = MemberListEntry {
         member.id,
@@ -427,6 +501,7 @@ void MP1Node::addMemberEntry(const MemberData &member) {
 
     if (cachePos != peersCache.end()) {
         if (cachePos->second.heartbeat < memberEntry.heartbeat) {
+            // debug_log(&memberNode->addr, "update %d:%d", memberEntry.id, memberEntry.port);
             cachePos->second.heartbeat = memberEntry.heartbeat;
             cachePos->second.timestamp = memberEntry.timestamp;
             peersChangeDetected = true;
@@ -459,6 +534,9 @@ void MP1Node::handleNodeOperations() {
     }
     FailureDetector failureDetector(this);
     failureDetector.run();
+
+    HearbeatService heartbeatService(this);
+    heartbeatService.run();
 }
 
 /**
@@ -491,7 +569,7 @@ long MP1Node::getTimestamp() {
     return timestamp;
 }
 
-MemberListEntry &MP1Node::getCachedEntry(MemberListEntry& entry) {
+MemberListEntry& MP1Node::getCachedEntry(MemberListEntry& entry) {
     auto hash = toInt64(entry);
     auto pos = peersCache.find(hash);
     if (pos != peersCache.end())
@@ -499,6 +577,13 @@ MemberListEntry &MP1Node::getCachedEntry(MemberListEntry& entry) {
     return entry;
 }
 
+Member* MP1Node::getMemberNode() {
+    return memberNode;
+}
+
+MP1Node::MembersList& MP1Node::getMembersList() {
+    return memberNode->memberList;
+}
 
 void MP1Node::advanceHeartbeat() {
     ++memberNode->heartbeat;
@@ -513,7 +598,6 @@ void MP1Node::markFailed(MemberListEntry &member) {
 }
 
 void MP1Node::eraseCached(MemberListEntry &member) {
-    printf("usuwam\n" );
     Address remote = makeAddress(member.id, member.port);
     debug_log_node_remove(&memberNode->addr, &remote);
     peersCache.erase(toInt64(member));

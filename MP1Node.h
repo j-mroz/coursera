@@ -35,7 +35,8 @@
 enum MsgTypes {
     JOINREQ,
     JOINRSP,
-    ADD_MEMBERS_REQ
+    ADD_MEMBERS_REQ,
+    HEARTBEAT
 };
 
 #define ESUCCESS 0
@@ -75,6 +76,13 @@ struct AddMembersRequest {
     uint64_t membersCount;
 };
 
+struct Heartbeat {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+};
+
 // Hashing forward declarations
 bool operator==(const MemberListEntry& lhs, const MemberListEntry& rhs);
 struct MemberListEntryHash {
@@ -89,6 +97,8 @@ struct MemberListEntryHash {
  */
 class MP1Node {
 public:
+    using MembersList = decltype( ((Member*)0)->memberList );
+
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
     virtual ~MP1Node();
 
@@ -101,14 +111,10 @@ public:
     int16_t getPort();
     int64_t getHeartbeat();
     long    getTimestamp();
-	Member* getMemberNode() { return memberNode; }
+	Member* getMemberNode();
+
     MemberListEntry &getCachedEntry(MemberListEntry& entry);
-
-    using MembersList = decltype( ((Member*)0)->memberList );
-    MembersList &getMembersList() {
-        return memberNode->memberList;
-    }
-
+    MembersList     &getMembersList();
 
     void    nodeStart(char *servaddrstr, short serverport);
     void    nodeLoop();
@@ -119,6 +125,7 @@ public:
     void    handleJoinResponse(void *rawReq);
     void    handleAddMembersRequest(void *rawReq);
     void    handleMembersData(char *buff, uint64_t count);
+    void    handleHeartbeat(void *rawReq);
 
     int     recvCallBack(void *env, char *data, int size);
     int     recvLoop();
@@ -138,10 +145,7 @@ private:
     Address getJoinAddress();
     void    printAddress(Address *addr);
 
-// private:
 public:
-    // using PeersCache = std::unordered_set<int64_t>;
-    // using PeersCache = std::unordered_set<MemberListEntry, MemberListEntryHash>;
     using PeersCache = std::unordered_map<int64_t, MemberListEntry>;
     using FailedPeers = std::unordered_set<MemberListEntry, MemberListEntryHash>;
 
