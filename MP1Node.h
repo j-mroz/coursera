@@ -16,6 +16,7 @@
 #include "Queue.h"
 
 #include <unordered_set>
+#include <unordered_map>
 #include <set>
 
 /**
@@ -66,13 +67,20 @@ struct MemberData {
     int64_t heartbeat;
 };
 
-struct AddMembersReq {
+struct AddMembersRequest {
     int16_t msgType;
     int32_t id;
     int16_t port;
     int64_t heartbeat;
     uint64_t membersCount;
 };
+
+// Hashing forward declarations
+bool operator==(const MemberListEntry& lhs, const MemberListEntry& rhs);
+struct MemberListEntryHash {
+    size_t operator()(const MemberListEntry& member) const;
+};
+
 
 /**
  * CLASS NAME: MP1Node
@@ -94,6 +102,7 @@ public:
     int64_t getHeartbeat();
     long    getTimestamp();
 	Member* getMemberNode() { return memberNode; }
+    MemberListEntry &getCachedEntry(MemberListEntry& entry);
 
     using MembersList = decltype( ((Member*)0)->memberList );
     MembersList &getMembersList() {
@@ -115,6 +124,9 @@ public:
     int     recvLoop();
     int     send(Address addr, char *data, size_t len);
 
+    void    markFailed(MemberListEntry &member);
+    void    eraseCached(MemberListEntry &member);
+
 private:
     void    prepareJoinResponseHeader(char *buff);
     void    prepareJoinResponsePayload(char *buff);
@@ -128,13 +140,17 @@ private:
 
 // private:
 public:
-    using PeersCache = std::set<int64_t>;
+    // using PeersCache = std::unordered_set<int64_t>;
+    // using PeersCache = std::unordered_set<MemberListEntry, MemberListEntryHash>;
+    using PeersCache = std::unordered_map<int64_t, MemberListEntry>;
+    using FailedPeers = std::unordered_set<MemberListEntry, MemberListEntryHash>;
 
     EmulNet     *emulNet;
     Log         *log;
     Params      *par;
     Member      *memberNode;
     PeersCache  peersCache;
+    FailedPeers failedPeers;
     bool        peersChangeDetected = false;
     long        timestamp = 0;
 };

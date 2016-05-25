@@ -1,8 +1,5 @@
 /**********************************
- * FILE NAME: MP1Node.cpp
- *
- * Membership protocol run by this Node.
- * 				Definition of MP1Node class functions.
+ * Author: Jaroslaw Mroz
  **********************************/
 
 #include "MP1Node.h"
@@ -13,9 +10,11 @@
 #ifdef DEBUGLOG
 #define debug_log(a, b, ...) do { log->LOG(a, b, ##__VA_ARGS__); } while (0)
 #define debug_log_node_add(a, b) do { log->logNodeAdd(a, b); } while (0)
+#define debug_log_node_remove(a, b) do { log->logNodeRemove(a, b); } while (0)
 #else
 #define debug_log(a, b, ...)
 #define debug_log_node_add(a, b)
+#define debug_log_node_remove(a, b)
 #endif
 
 
@@ -27,11 +26,11 @@ Aligned getUnaligned(void *ptr) {
 }
 
 static Address makeAddress(int32_t id, int16_t port) {
-	Address result;
-	memset(&result, 0, sizeof(Address));
-	*(int32_t *)(&result.addr[0]) = id;
-	*(int16_t *)(&result.addr[4]) = port;
-	return result;
+    Address result;
+    memset(&result, 0, sizeof(Address));
+    *(int32_t *)(&result.addr[0]) = id;
+    *(int16_t *)(&result.addr[4]) = port;
+    return result;
 }
 
 static size_t copyMemberEntry(char *buff, const MemberListEntry &entry) {
@@ -42,87 +41,132 @@ static size_t copyMemberEntry(char *buff, const MemberListEntry &entry) {
     return sizeof(MemberData);
 }
 
+static int64_t toInt64(const MemberData& member) {
+    return ((int64_t)member.id << 32) + member.port;
+}
+
+static int64_t toInt64(const MemberListEntry& member) {
+    auto m = const_cast<MemberListEntry&>(member);
+    return ((int64_t)m.getid() << 32) + m.getport();
+}
+
+bool operator==(const MemberListEntry& lhs, const MemberListEntry& rhs) {
+    return toInt64(lhs) == toInt64(rhs);
+}
+
+size_t MemberListEntryHash::operator()(const MemberListEntry& member) const {
+    return toInt64(member);
+}
+
 /**
  *
  */
 class GossipDisseminator {
-	MP1Node *node;
+    MP1Node *node;
 
 public:
-	GossipDisseminator(MP1Node *node) : node(node) { }
+    GossipDisseminator(MP1Node *node) : node(node) { }
 
-	void run() {
-		gossipMembersList();
-	}
+    void run() {
+        gossipMembersList();
+    }
 
-	vector<size_t> pickGossipGroup() {
-		static auto membersIndices = vector<int>();
-		auto membersCount = node->getMemberNode()->memberList.size();
-		auto gossipRange = (int64_t)log(membersCount) + 1;
+    vector<size_t> pickGossipGroup() {
+        static auto membersIndices = vector<int>();
+        auto membersCount = node->getMembersList().size();
+        auto gossipRange = (int64_t)log(membersCount) + 1;
+        if (gossipRange < membersCount)
+            ++gossipRange;
 
-		membersIndices.resize(membersCount);
+        membersIndices.resize(membersCount);
         iota(membersIndices.begin(), membersIndices.end(), 0);
         random_shuffle(membersIndices.begin(), membersIndices.end());
 
-		return vector<size_t>(membersIndices.begin(),
-							  membersIndices.begin() + gossipRange);
+        return vector<size_t>(membersIndices.begin(),
+                              membersIndices.begin() + gossipRange);
 
-	}
+    }
 
     void gossipMembersList() {
-		size_t membersCount = node->getMemberNode()->memberList.size();
-		size_t reqHeaderSize = sizeof(AddMembersReq);
-		size_t reqPayloadSize = sizeof(MemberData) * membersCount;
-		vector<char> msgBuff(reqHeaderSize + reqPayloadSize);
+        size_t membersCount = node->getMembersList().size();
+        size_t reqHeaderSize = sizeof(AddMembersRequest);
+        size_t reqPayloadSize = sizeof(MemberData) * membersCount;
+        vector<char> msgBuff(reqHeaderSize + reqPayloadSize);
 
-		auto req = AddMembersReq {
-			ADD_MEMBERS_REQ,
-			node->getId(),
-			node->getPort(),
-			node->getHeartbeat(),
-			node->getMemberNode()->memberList.size()
-		};
+        auto req = AddMembersRequest {
+            ADD_MEMBERS_REQ,
+            node->getId(),
+            node->getPort(),
+            node->getHeartbeat(),
+            node->getMemberNode()->memberList.size()
+        };
 
-		char *buffOffset = msgBuff.data();
-		memcpy(buffOffset, (char*)&req, reqHeaderSize);
-		buffOffset += reqHeaderSize;
+        char *buffOffset = msgBuff.data();
+        memcpy(buffOffset, (char*)&req, reqHeaderSize);
+        buffOffset += reqHeaderSize;
 
-		for (auto &entry : node->getMemberNode()->memberList) {
-			auto copiedBytes = copyMemberEntry(buffOffset, entry);
-			buffOffset += copiedBytes;
-		}
+        for (auto &entry : node->getMembersList()) {
+            auto copiedBytes = copyMemberEntry(buffOffset, entry);
+            buffOffset += copiedBytes;
+        }
 
-		auto gossipPeers = pickGossipGroup();
-		for (auto peerIndex : gossipPeers) {
-			auto &member  = node->getMemberNode()->memberList[peerIndex];
-			node->send(makeAddress(member.getid(), member.getport()),
-					   msgBuff.data(), reqHeaderSize + reqPayloadSize);
-		}
+        auto gossipPeers = pickGossipGroup();
+        for (auto peerIndex : gossipPeers) {
+            auto &member  = node->getMembersList()[peerIndex];
+            node->send(makeAddress(member.getid(), member.getport()),
+                       msgBuff.data(), reqHeaderSize + reqPayloadSize);
+        }
     }
 };
 
-// class FailureDetector {
-// 	MP1Node *node;
-// 	long failTimeout;
-//
-// public:
-// 	FailureDetector(MP1Node *node) : node(node) { }
-//
-// 	void run() {
-// 		detectStaleMembers();
-// 	}
-//
-// 	void detectStaleMembers() {
-//
-// 		for (auto &member : node->getMembersList()) {
-// 			if (member->timestamp < node->getTimestamp() - failTimeout) {
-// 				markFailed(member)
-// 			}
-// 		}
-//
-// 	}
-//
-// };
+/**
+ *
+ */
+class FailureDetector {
+    MP1Node *node;
+    long failTimeout = TFAIL;
+    long removeTimeout = TREMOVE;
+
+public:
+    FailureDetector(MP1Node *node) : node(node) { }
+
+    void run() {
+        detectFailedMembers();
+        removeFailedMembers();
+    }
+
+    void detectFailedMembers() {
+        auto &members = node->getMembersList();
+        auto timestamp = node->getTimestamp();
+
+        printf("[" );
+        for (auto &member : members) {
+            printf("%ld:%ld ", member.heartbeat, member.timestamp);
+            member = node->getCachedEntry(member);  // write from cache
+            if (timestamp - member.gettimestamp() >= failTimeout) {
+                node->markFailed(member);
+            }
+        }
+        printf("]\n" );
+    }
+
+    void removeFailedMembers() {
+        auto &members = node->getMembersList();
+        auto timestamp = node->getTimestamp();
+
+        auto isRemovable = [&](const MemberListEntry& member) {
+            return timestamp - member.timestamp >= removeTimeout;
+        };
+        auto hardFailedBegin = remove_if(members.begin(), members.end(), isRemovable);
+        auto hardFailedEnd = members.end();
+
+        for (auto peer = hardFailedBegin; peer != hardFailedEnd; ++peer)
+            node->eraseCached(*peer);
+
+        members.erase(hardFailedBegin, hardFailedEnd);
+    }
+
+};
 
 
 /**
@@ -204,7 +248,7 @@ int MP1Node::join(Address *joinaddr) {
         };
 
         debug_log(&memberNode->addr, "Trying to join... ");
-		send(*joinaddr, (char*)&req, sizeof(req));
+        send(*joinaddr, (char*)&req, sizeof(req));
     }
 
     return 0;
@@ -214,7 +258,7 @@ int MP1Node::join(Address *joinaddr) {
  * Wind up this node and clean up state
  */
 int MP1Node::finishUpThisNode() {
-	return 0;
+    return 0;
 }
 
 /**
@@ -225,12 +269,12 @@ int MP1Node::recvLoop() {
     if (memberNode->bFailed)
         return false;
 
-	auto queueIngress = [&](void *env, char *buff, int size) -> int  {
-		return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
-	};
+    auto queueIngress = [&](void *env, char *buff, int size) -> int  {
+        return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
+    };
 
-	return emulNet->ENrecv(&memberNode->addr, queueIngress,
-						   nullptr, 1, &memberNode->mp1q);
+    return emulNet->ENrecv(&memberNode->addr, queueIngress,
+                           nullptr, 1, &memberNode->mp1q);
 }
 
 /**
@@ -275,22 +319,22 @@ int MP1Node::recvCallBack(void *env, char *data, int size) {
     void *rawReq = (void *) data;
     Request req = getUnaligned<Request>(rawReq);
 
-	#define handle(REQ_TYPE) { 						\
-		assert((size_t)size >= sizeof(#REQ_TYPE));	\
-		handle##REQ_TYPE(rawReq);					\
-		break;										\
-	}
+    #define handle(REQ_TYPE) {                        \
+        assert((size_t)size >= sizeof(#REQ_TYPE));    \
+        handle##REQ_TYPE(rawReq);                     \
+        break;                                        \
+    }
 
-	switch (req.msgType) {
-		case JOINREQ:
-			handle(JoinRequest);
-		case JOINRSP:
-			handle(JoinResponse);
-		case ADD_MEMBERS_REQ:
-			handle(AddMembersRequest);
-		default:
-			break;
-	}
+    switch (req.msgType) {
+        case JOINREQ:
+            handle(JoinRequest);
+        case JOINRSP:
+            handle(JoinResponse);
+        case ADD_MEMBERS_REQ:
+            handle(AddMembersRequest);
+        default:
+            break;
+    }
 
     return ESUCCESS;
 }
@@ -301,16 +345,16 @@ int MP1Node::recvCallBack(void *env, char *data, int size) {
 void MP1Node::handleJoinRequest(void *rawReq) {
     static auto buff = vector<char>();
     auto payloadSize = memberNode->memberList.size() * sizeof(MemberData);
-	buff.resize(sizeof(JoinResponse) + payloadSize);
+    buff.resize(sizeof(JoinResponse) + payloadSize);
 
     prepareJoinResponseHeader(buff.data());
     prepareJoinResponsePayload(buff.data() + sizeof(JoinResponse));
 
-	auto req = getUnaligned<JoinRequest>(rawReq);
+    auto req = getUnaligned<JoinRequest>(rawReq);
     Address remote = makeAddress(req.id, req.port);
-	send(remote, buff.data(), buff.size());
+    send(remote, buff.data(), buff.size());
 
-	addMemberEntry(MemberData{req.id, req.port, req.heartbeat});
+    addMemberEntry(MemberData{req.id, req.port, req.heartbeat});
 }
 
 /**
@@ -321,7 +365,7 @@ void MP1Node::prepareJoinResponseHeader(char *buff) {
         JOINRSP,
         getId(),
         getPort(),
-		getHeartbeat(),
+        getHeartbeat(),
         memberNode->memberList.size(),
     };
     memcpy(buff, &rsp, sizeof(JoinResponse));
@@ -332,7 +376,7 @@ void MP1Node::prepareJoinResponseHeader(char *buff) {
  */
 void MP1Node::prepareJoinResponsePayload(char *buff) {
     for (auto &entry : memberNode->memberList) {
-		size_t copied = copyMemberEntry(buff, entry);
+        size_t copied = copyMemberEntry(buff, entry);
         buff += copied;
     }
 }
@@ -343,7 +387,7 @@ void MP1Node::prepareJoinResponsePayload(char *buff) {
 void MP1Node::handleJoinResponse(void *raw) {
     auto rsp = getUnaligned<JoinResponse>(raw);
     auto *payload = (char*)raw + sizeof(JoinResponse);
-	addMemberEntry({rsp.id, rsp.port, rsp.heartbeat});
+    addMemberEntry({rsp.id, rsp.port, rsp.heartbeat});
     handleMembersData(payload, rsp.membersCount);
     memberNode->inGroup = true;
 }
@@ -352,9 +396,9 @@ void MP1Node::handleJoinResponse(void *raw) {
  *
  */
 void MP1Node::handleAddMembersRequest(void *raw) {
-    auto req = getUnaligned<AddMembersReq>(raw);
-    auto *payload = (char*)raw + sizeof(AddMembersReq);
-	handleMembersData(payload, req.membersCount);
+    auto req = getUnaligned<AddMembersRequest>(raw);
+    auto *payload = (char*)raw + sizeof(AddMembersRequest);
+    handleMembersData(payload, req.membersCount);
 }
 
 /**
@@ -372,35 +416,49 @@ void MP1Node::handleMembersData(char *buff, uint64_t count) {
  *
  */
 void MP1Node::addMemberEntry(const MemberData &member) {
-	if (peersCache.count(member.id) != 0) {
-		return;
-	}
-	peersCache.insert(member.id);
-	peersChangeDetected = true;
+    auto memberEntry = MemberListEntry {
+        member.id,
+        member.port,
+        member.heartbeat,
+        timestamp
+    };
+    auto hash = toInt64(memberEntry);
+    auto cachePos = peersCache.find(hash);
 
-	memberNode->memberList.push_back({
-		member.id,
-		member.port,
-		member.heartbeat,
-		timestamp
-	});
-	Address remote = makeAddress(member.id, member.port);
-	debug_log_node_add(&memberNode->addr, &remote);
+    if (cachePos != peersCache.end()) {
+        if (cachePos->second.heartbeat < memberEntry.heartbeat) {
+            cachePos->second.heartbeat = memberEntry.heartbeat;
+            cachePos->second.timestamp = memberEntry.timestamp;
+            peersChangeDetected = true;
+        }
+    } else {
+        peersCache[hash] = memberEntry;
+        memberNode->memberList.push_back(memberEntry);
+        Address remote = makeAddress(member.id, member.port);
+        debug_log_node_add(&memberNode->addr, &remote);
+        peersChangeDetected = true;
+    }
+
 }
 
 /**
  * FUNCTION NAME: nodeLoopOps
  *
  * Check if any node hasn't responded within a timeout period and then delete
- * 				the nodes
- * 				Propagate your membership list
+ *                 the nodes
+ *                 Propagate your membership list
  */
 void MP1Node::handleNodeOperations() {
-	if (peersChangeDetected) {
-		GossipDisseminator disseminator(this);
-		disseminator.gossipMembersList();
-		peersChangeDetected = false;
-	}
+    advanceTimestamp();
+    advanceHeartbeat();
+
+    if (peersChangeDetected) {
+        GossipDisseminator disseminator(this);
+        disseminator.run();
+        peersChangeDetected = false;
+    }
+    FailureDetector failureDetector(this);
+    failureDetector.run();
 }
 
 /**
@@ -426,23 +484,43 @@ int16_t MP1Node::getPort() {
 }
 
 int64_t MP1Node::getHeartbeat() {
-	return memberNode->heartbeat;
+    return memberNode->heartbeat;
 }
 
 long MP1Node::getTimestamp() {
-	return timestamp;
+    return timestamp;
 }
 
+MemberListEntry &MP1Node::getCachedEntry(MemberListEntry& entry) {
+    auto hash = toInt64(entry);
+    auto pos = peersCache.find(hash);
+    if (pos != peersCache.end())
+        return pos->second;
+    return entry;
+}
+
+
 void MP1Node::advanceHeartbeat() {
-	++memberNode->heartbeat;
+    ++memberNode->heartbeat;
 }
 
 void MP1Node::advanceTimestamp() {
-	++timestamp;
+    ++timestamp;
+}
+
+void MP1Node::markFailed(MemberListEntry &member) {
+    failedPeers.insert(member);
+}
+
+void MP1Node::eraseCached(MemberListEntry &member) {
+    printf("usuwam\n" );
+    Address remote = makeAddress(member.id, member.port);
+    debug_log_node_remove(&memberNode->addr, &remote);
+    peersCache.erase(toInt64(member));
 }
 
 int MP1Node::send(Address addr, char *data, size_t len) {
-	return emulNet->ENsend(&memberNode->addr, &addr, data, len);
+    return emulNet->ENsend(&memberNode->addr, &addr, data, len);
 }
 
 
@@ -451,6 +529,6 @@ int MP1Node::send(Address addr, char *data, size_t len) {
 */
 void MP1Node::printAddress(Address *addr) {
     printf("%d.%d.%d.%d:%d \n",
-		  addr->addr[0], addr->addr[1],addr->addr[2],
+          addr->addr[0], addr->addr[1],addr->addr[2],
           addr->addr[3], *(short*)&addr->addr[4]) ;
 }
