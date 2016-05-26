@@ -4,20 +4,8 @@
 
 #include "MP1Node.h"
 
-#include <numeric>
 #include <cmath>
-#include <string>
-
-#ifdef DEBUGLOG
-#define debug_log(a, b, ...) do { log->LOG(a, b, ##__VA_ARGS__); } while (0)
-#define debug_log_node_add(a, b) do { log->logNodeAdd(a, b); } while (0)
-#define debug_log_node_remove(a, b) do { log->logNodeRemove(a, b); } while (0)
-#else
-#define debug_log(a, b, ...)
-#define debug_log_node_add(a, b)
-#define debug_log_node_remove(a, b)
-#endif
-
+#include <numeric>
 
 template <typename Aligned>
 Aligned getUnaligned(void *ptr) {
@@ -73,7 +61,7 @@ protected:
         iota(membersIndices.begin(), membersIndices.end(), 0);
         random_shuffle(membersIndices.begin(), membersIndices.end());
 
-        auto gossipRange = (int64_t)log(membersCount);
+        auto gossipRange = (size_t)log(membersCount);
         if (gossipRange < membersCount) ++gossipRange;
         if (gossipRange < membersCount) ++gossipRange;
 
@@ -169,28 +157,29 @@ public:
         auto &members = node->getMembersList();
         auto timestamp = node->getTimestamp();
 
+        // Move failed members to failed list
         auto hasFailed = [&](const MemberListEntry& member) {
             return timestamp - member.timestamp >= failTimeout;
         };
-
-        // Move failed members to failed list
         for (auto &member : members) {
-            member = node->getCachedEntry(member);  // write from cache
+            member = node->getCachedEntry(member);  // update from cache
             if (hasFailed(member)) {
                 node->getFailedMembers().insert(member);
-                node->eraseCached(member);
+                node->getMembersCache().erase(addressHash(member.id, member.port));
             }
         }
         members.erase(remove_if(members.begin(), members.end(), hasFailed),
                       members.end());
 
+        // Remove hard failed members
         auto isRemovable = [&](const MemberListEntry& member) {
           return timestamp - member.timestamp >= removeTimeout;
         };
-
-        for (auto &peer : node->getFailedMembers()) {
-          if (isRemovable(peer))
-            node->removeFailed(peer);
+        for (auto &member : node->getFailedMembers()) {
+          if (isRemovable(member)) {
+              node->getFailedMembers().erase(member);
+              node->logNodeRemove(toAddress(member.id, member.port));
+          }
         }
     }
 };
@@ -226,14 +215,14 @@ MP1Node::~MP1Node() {}
 void MP1Node::nodeStart(char *servaddrstr, short servport) {
     // Self booting routines
     if (init() != 0) {
-        debug_log(&memberNode->addr, "init failed. Exit.");
+        logNode("init failed. Exit.");
         exit(1);
     }
 
     auto joinaddr = getJoinAddress();
     if (join(&joinaddr) != 0) {
         finishUpThisNode();
-        debug_log(&memberNode->addr, "Unable to join self to group. Exiting.");
+        logNode("Unable to join self to group. Exiting.");
         exit(1);
     }
 }
@@ -250,7 +239,7 @@ int MP1Node::init() {
     memberNode->timeOutCounter = -1;
     memberNode->memberList.clear();
 
-    return 0;
+    return ESUCCESS;
 }
 
 /**
@@ -264,7 +253,7 @@ int MP1Node::join(Address *joinaddr) {
 
     if (selfJoin) {
         // I am the group booter (first process to join the group).
-        debug_log(&memberNode->addr, "Starting up group...");
+        logNode("Starting up group...");
         memberNode->inGroup = true;
     } else {
         JoinRequest req {
@@ -274,21 +263,21 @@ int MP1Node::join(Address *joinaddr) {
             getHeartbeat()
         };
 
-        debug_log(&memberNode->addr, "Trying to join... ");
+        logNode("Trying to join... ");
         send(*joinaddr, (char*)&req, sizeof(req));
     }
 
-    return 0;
+    return ESUCCESS;
 }
 
 /**
  * Wind up this node and clean up state
  */
 int MP1Node::finishUpThisNode() {
-    return 0;
+    return ESUCCESS;
 }
 
-int queueIngress(void *env, char *buff, int size) {
+static int queueIngress(void *env, char *buff, int size) {
     return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
 }
 
@@ -338,7 +327,7 @@ void MP1Node::drainIngressQueue() {
  */
 int MP1Node::handleRequest(void *env, char *data, int size) {
     if ((size_t)size < sizeof(Request))
-        return ESIZE;
+        return EFAIL;
 
     void *rawReq = (void *) data;
     Request req = getUnaligned<Request>(rawReq);
@@ -387,7 +376,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
     auto req = getUnaligned<JoinRequest>(rawReq);
     send(toAddress(req.id, req.port), buff.data(), buff.size());
 
-    addMemberEntry(MemberData{req.id, req.port, req.heartbeat});
+    addMemberEntry({req.id, req.port, req.heartbeat, timestamp});
 }
 
 
@@ -397,7 +386,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
 void MP1Node::handleJoinResponse(void *raw, size_t size) {
     auto rsp = getUnaligned<JoinResponse>(raw);
     auto *payload = (char*)raw + sizeof(JoinResponse);
-    addMemberEntry({rsp.id, rsp.port, rsp.heartbeat});
+    addMemberEntry({rsp.id, rsp.port, rsp.heartbeat, timestamp});
     handleMembersData(payload, rsp.membersCount);
     memberNode->inGroup = true;
 }
@@ -417,7 +406,7 @@ void MP1Node::handleAddMembersRequest(void *raw, size_t size) {
 void MP1Node::handleMembersData(char *buff, uint64_t count) {
     for (auto memberIdx = 0ull; memberIdx < count; ++memberIdx) {
         auto entry = getUnaligned<MemberData>((void*)buff);
-        addMemberEntry(entry);
+        addMemberEntry({entry.id, entry.port, entry.heartbeat, timestamp});
         buff += sizeof(entry);
     }
 }
@@ -427,7 +416,7 @@ void MP1Node::handleMembersData(char *buff, uint64_t count) {
  */
 void MP1Node::handleHeartbeat(void *rawReq, size_t size) {
     auto req = getUnaligned<Heartbeat>(rawReq);
-    failedPeers.erase(MemberListEntry { req.id, req.port, 0, 0 });
+    failedPeers.erase({ req.id, req.port, 0, 0 });
 
     int64_t hash = addressHash(req.id, req.port);
     auto peer = peersCache.find(hash);
@@ -441,33 +430,23 @@ void MP1Node::handleHeartbeat(void *rawReq, size_t size) {
 /**
  *
  */
-void MP1Node::addMemberEntry(const MemberData &member) {
-    auto memberEntry = MemberListEntry {
-        member.id,
-        member.port,
-        member.heartbeat,
-        timestamp
-    };
-    auto hash = addressHash(memberEntry.id, memberEntry.port);
+void MP1Node::addMemberEntry(MemberListEntry entry) {
+    auto hash = addressHash(entry.id, entry.port);
     auto cachePos = peersCache.find(hash);
-    auto failedPos = failedPeers.find(memberEntry);
+    auto failedPos = failedPeers.find(entry);
 
     if (cachePos != peersCache.end() ) {
-        if (cachePos->second.heartbeat < memberEntry.heartbeat) {
-            cachePos->second.heartbeat = memberEntry.heartbeat;
-            cachePos->second.timestamp = memberEntry.timestamp;
-            peersChangeDetected = true;
+        if (cachePos->second.heartbeat < entry.heartbeat) {
+            cachePos->second.heartbeat = entry.heartbeat;
+            cachePos->second.timestamp = entry.timestamp;
         }
-        return;
     } else if (failedPos != failedPeers.end() &&
-               failedPos->heartbeat < memberEntry.heartbeat) {
+               failedPos->heartbeat < entry.heartbeat) {
         failedPeers.erase(failedPos);
     } else if (failedPos == failedPeers.end()) {
-        Address remote = toAddress(member.id, member.port);
-        debug_log_node_add(&memberNode->addr, &remote);
-        peersCache[hash] = memberEntry;
-        memberNode->memberList.push_back(memberEntry);
-        peersChangeDetected = true;
+        logNodeAdd(toAddress(entry.id, entry.port));
+        peersCache[hash] = entry;
+        memberNode->memberList.push_back(move(entry));
     }
 }
 
@@ -494,14 +473,12 @@ Address MP1Node::getJoinAddress() {
 }
 
 int32_t MP1Node::getId() {
-    // return *(int32_t*)(&memberNode->addr.addr);
     return getUnaligned<int32_t>(&memberNode->addr.addr[0]);
 
 }
 
 int16_t MP1Node::getPort() {
     return getUnaligned<int16_t>(&memberNode->addr.addr[4]);
-    // return *(int16_t*)(&memberNode->addr.addr[4]);
 }
 
 int64_t MP1Node::getHeartbeat() {
@@ -528,6 +505,10 @@ MP1Node::MembersList& MP1Node::getMembersList() {
     return memberNode->memberList;
 }
 
+MP1Node::MembersMap& MP1Node::getMembersCache() {
+    return peersCache;
+}
+
 void MP1Node::advanceHeartbeat() {
     ++memberNode->heartbeat;
 }
@@ -540,16 +521,27 @@ MP1Node::MembersSet& MP1Node::getFailedMembers() {
     return failedPeers;
 }
 
-void MP1Node::removeFailed(const MemberListEntry &member) {
-    failedPeers.erase(member);
-    Address remote = toAddress(member.id, member.port);
-    debug_log_node_remove(&memberNode->addr, &remote);
-}
-
-void MP1Node::eraseCached(MemberListEntry &member) {
-    peersCache.erase(addressHash(member.id, member.port));
-}
-
 int MP1Node::send(Address addr, char *data, size_t len) {
     return emulNet->ENsend(&memberNode->addr, &addr, data, len);
+}
+
+void MP1Node::logNode(const char *fmt, ...) {
+#ifdef DEBUGLOG
+    va_list args;
+    va_start(args, fmt);
+    log->LOG(&memberNode->addr, fmt, args);
+    va_end(args);
+#endif
+}
+
+void MP1Node::logNodeAdd(Address other) {
+#ifdef DEBUGLOG
+    log->logNodeAdd(&memberNode->addr, &other);
+#endif
+}
+
+void MP1Node::logNodeRemove(Address other) {
+#ifdef DEBUGLOG
+    log->logNodeRemove(&memberNode->addr, &other);
+#endif
 }

@@ -1,6 +1,4 @@
 /**********************************
- * FILE NAME: MP1Node.cpp
- *
  * DESCRIPTION: Membership protocol run by this Node.
  * 				Header file of MP1Node class.
  **********************************/
@@ -17,7 +15,6 @@
 
 #include <functional>
 #include <memory>
-#include <set>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -39,35 +36,22 @@ enum MsgTypes {
 };
 
 #define ESUCCESS 0
-#define ESIZE 1
+#define EFAIL    1
 
+#define _packed_ __attribute__((packed, aligned(2)))
 
-struct Request {
+struct _packed_ Request {
     int16_t msgType;
 };
 
-struct JoinRequest {
-    int16_t msgType;
-    int32_t id;
-    int16_t port;
-    int64_t heartbeat;
-};
-
-struct JoinResponse {
+struct _packed_ JoinRequest {
     int16_t msgType;
     int32_t id;
     int16_t port;
     int64_t heartbeat;
-    uint64_t membersCount;
 };
 
-struct MemberData {
-    int32_t id;
-    int16_t port;
-    int64_t heartbeat;
-};
-
-struct AddMembersRequest {
+struct _packed_ JoinResponse {
     int16_t msgType;
     int32_t id;
     int16_t port;
@@ -75,7 +59,21 @@ struct AddMembersRequest {
     uint64_t membersCount;
 };
 
-struct Heartbeat {
+struct _packed_ MemberData {
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+};
+
+struct _packed_ AddMembersRequest {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+    uint64_t membersCount;
+};
+
+struct _packed_ Heartbeat {
     int16_t msgType;
     int32_t id;
     int16_t port;
@@ -115,9 +113,13 @@ public:
 	Member*             getMemberNode();
     MemberListEntry&    getCachedEntry(MemberListEntry& entry);
     MembersList&        getMembersList();
-    MembersMap&         getMembersMap();
+    MembersMap&         getMembersCache();
     MembersSet&         getFailedMembers();
+    int                 send(Address addr, char *data, size_t len);
 
+    void logNode(const char *fmt, ...);
+    void logNodeAdd(Address other);
+    void logNodeRemove(Address other);
 
 // Emulator API
     int     init();
@@ -126,10 +128,6 @@ public:
     void    nodeStart(char *servaddrstr, short serverport);
     void    nodeLoop();
     int     recvLoop();
-
-    int     send(Address addr, char *data, size_t len);
-    void    eraseCached(MemberListEntry &member);
-    void    removeFailed(const MemberListEntry &member);
 
 private:
     void    drainIngressQueue();
@@ -140,14 +138,9 @@ private:
     void    handleJoinResponse(void *data, size_t size);
     void    handleAddMembersRequest(void *data, size_t size);
     void    handleHeartbeat(void *rawReq, size_t size);
-
     void    handleMembersData(char *buff, uint64_t count);
 
-
-
-private:
-    void    addMemberEntry(const MemberData &member);
-
+    void    addMemberEntry(MemberListEntry entry);
     void    advanceHeartbeat();
     void    advanceTimestamp();
 
@@ -162,7 +155,6 @@ private:
     Member      *memberNode;
     MembersMap  peersCache;
     MembersSet  failedPeers;
-    bool        peersChangeDetected = false;
     long        timestamp = 0;
     TasksList   tasks;
 };
