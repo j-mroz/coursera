@@ -15,19 +15,17 @@
 #include "EmulNet.h"
 #include "Queue.h"
 
+#include <functional>
+#include <memory>
+#include <set>
 #include <unordered_set>
 #include <unordered_map>
-#include <set>
 
 /**
  * Macros
  */
 #define TREMOVE 20
 #define TFAIL 5
-
-/*
- * Note: You can change/add any functions in MP1Node.{h,cpp}
- */
 
 /**
  * Message Types
@@ -36,7 +34,8 @@ enum MsgTypes {
     JOINREQ,
     JOINRSP,
     ADD_MEMBERS_REQ,
-    HEARTBEAT
+    HEARTBEAT,
+    MSG_TYPES_COUNT
 };
 
 #define ESUCCESS 0
@@ -89,6 +88,10 @@ struct MemberListEntryHash {
     size_t operator()(const MemberListEntry& member) const;
 };
 
+struct Task {
+    virtual void run() = 0;
+    virtual ~Task() { }
+};
 
 /**
  * CLASS NAME: MP1Node
@@ -98,65 +101,70 @@ struct MemberListEntryHash {
 class MP1Node {
 public:
     using MembersList = decltype( ((Member*)0)->memberList );
+    using MembersSet = std::unordered_set<MemberListEntry, MemberListEntryHash>;
+    using MembersMap = std::unordered_map<int64_t, MemberListEntry>;
 
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
     virtual ~MP1Node();
 
+// Handlers API
+    int32_t             getId();
+    int16_t             getPort();
+    int64_t             getHeartbeat();
+    long                getTimestamp();
+	Member*             getMemberNode();
+    MemberListEntry&    getCachedEntry(MemberListEntry& entry);
+    MembersList&        getMembersList();
+    MembersMap&         getMembersMap();
+    MembersSet&         getFailedMembers();
+
+
+// Emulator API
     int     init();
-    void    initMembersList();
     int     join(Address *joinAddress);
     int     finishUpThisNode();
-
-    int32_t getId();
-    int16_t getPort();
-    int64_t getHeartbeat();
-    long    getTimestamp();
-	Member* getMemberNode();
-
-    MemberListEntry &getCachedEntry(MemberListEntry& entry);
-    MembersList     &getMembersList();
-
     void    nodeStart(char *servaddrstr, short serverport);
     void    nodeLoop();
-	void    handleIngress();
-    void    handleNodeOperations();
-
-    void    handleJoinRequest(void *rawReq);
-    void    handleJoinResponse(void *rawReq);
-    void    handleAddMembersRequest(void *rawReq);
-    void    handleMembersData(char *buff, uint64_t count);
-    void    handleHeartbeat(void *rawReq);
-
-    int     recvCallBack(void *env, char *data, int size);
     int     recvLoop();
-    int     send(Address addr, char *data, size_t len);
 
-    void    markFailed(MemberListEntry &member);
+    int     send(Address addr, char *data, size_t len);
     void    eraseCached(MemberListEntry &member);
+    void    removeFailed(const MemberListEntry &member);
 
 private:
-    void    prepareJoinResponseHeader(char *buff);
-    void    prepareJoinResponsePayload(char *buff);
+    void    drainIngressQueue();
+    void    runTasks();
+
+    int     handleRequest(void *env, char *data, int size);
+    void    handleJoinRequest(void *data, size_t size);
+    void    handleJoinResponse(void *data, size_t size);
+    void    handleAddMembersRequest(void *data, size_t size);
+    void    handleHeartbeat(void *rawReq, size_t size);
+
+    void    handleMembersData(char *buff, uint64_t count);
+
+
+
+private:
     void    addMemberEntry(const MemberData &member);
 
     void    advanceHeartbeat();
     void    advanceTimestamp();
 
     Address getJoinAddress();
-    void    printAddress(Address *addr);
 
-public:
-    using PeersCache = std::unordered_map<int64_t, MemberListEntry>;
-    using FailedPeers = std::unordered_set<MemberListEntry, MemberListEntryHash>;
+private:
+    using TasksList = vector<unique_ptr<Task>>;
 
     EmulNet     *emulNet;
     Log         *log;
     Params      *par;
     Member      *memberNode;
-    PeersCache  peersCache;
-    FailedPeers failedPeers;
+    MembersMap  peersCache;
+    MembersSet  failedPeers;
     bool        peersChangeDetected = false;
     long        timestamp = 0;
+    TasksList   tasks;
 };
 
 #endif /* _MP1NODE_H_ */
