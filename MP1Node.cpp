@@ -175,11 +175,15 @@ public:
         auto isRemovable = [&](const MemberListEntry& member) {
           return timestamp - member.timestamp >= removeTimeout;
         };
-        for (auto &member : node->getFailedMembers()) {
-          if (isRemovable(member)) {
-              node->getFailedMembers().erase(member);
-              node->logNodeRemove(toAddress(member.id, member.port));
-          }
+
+        auto &failed = node->getFailedMembers();
+        for (auto memberPos = failed.begin(); memberPos != failed.end(); ) {
+            if (isRemovable(*memberPos)) {
+                node->logNodeRemove(toAddress(memberPos->id, memberPos->port));
+                memberPos = node->getFailedMembers().erase(memberPos);
+            } else {
+                ++memberPos;
+            }
         }
     }
 };
@@ -314,10 +318,10 @@ void MP1Node::nodeLoop() {
  */
 void MP1Node::drainIngressQueue() {
     while (!memberNode->mp1q.empty()) {
-        auto *ptr = memberNode->mp1q.front().elt;
-        auto size = memberNode->mp1q.front().size;
+        auto msg = memberNode->mp1q.front();
         memberNode->mp1q.pop();
-        handleRequest((void *)memberNode, (char *)ptr, size);
+        handleRequest((void *)memberNode, (char *)msg.elt, msg.size);
+        free(msg.elt);
     }
 }
 
@@ -341,8 +345,10 @@ int MP1Node::handleRequest(void *env, char *data, int size) {
         break;
     case ADD_MEMBERS_REQ:
         handleAddMembersRequest(rawReq, size);
+        break;
     case HEARTBEAT:
         handleHeartbeat(rawReq, size);
+        break;
     default:
         break;
     }
@@ -369,7 +375,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
     copy((char*)&header, (char*)(&header+1), buff.begin());
 
     // prepare payload
-    char *offset = buff.data() + sizeof(header);
+    auto *offset = buff.data() + sizeof(header);
     for (auto &entry : memberNode->memberList)
         offset = copyMemberBytes(offset, entry);
 
@@ -442,11 +448,13 @@ void MP1Node::addMemberEntry(MemberListEntry entry) {
         }
     } else if (failedPos != failedPeers.end() &&
                failedPos->heartbeat < entry.heartbeat) {
+        peersCache[hash] = move(entry);
         failedPeers.erase(failedPos);
+        //logNodeAdd(toAddress(entry.id, entry.port));
     } else if (failedPos == failedPeers.end()) {
-        logNodeAdd(toAddress(entry.id, entry.port));
         peersCache[hash] = entry;
         memberNode->memberList.push_back(move(entry));
+        logNodeAdd(toAddress(entry.id, entry.port));
     }
 }
 

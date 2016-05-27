@@ -1,6 +1,6 @@
 /**********************************
- * DESCRIPTION: Membership protocol run by this Node.
- * 				Header file of MP1Node class.
+ * Membership protocol run by this Node.
+ * Header file of MP1Node class.
  **********************************/
 
 #ifndef _MP1NODE_H_
@@ -18,11 +18,8 @@
 #include <unordered_set>
 #include <unordered_map>
 
-/**
- * Macros
- */
-#define TREMOVE 20
-#define TFAIL 5
+#define TREMOVE 20    // Remove member timeout
+#define TFAIL   5     // Mark member as failed timeout
 
 /**
  * Message Types
@@ -102,7 +99,7 @@ public:
     using MembersSet = std::unordered_set<MemberListEntry, MemberListEntryHash>;
     using MembersMap = std::unordered_map<int64_t, MemberListEntry>;
 
-	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
+    MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
     virtual ~MP1Node();
 
 // Handlers API
@@ -110,7 +107,7 @@ public:
     int16_t             getPort();
     int64_t             getHeartbeat();
     long                getTimestamp();
-	Member*             getMemberNode();
+    Member*             getMemberNode();
     MemberListEntry&    getCachedEntry(MemberListEntry& entry);
     MembersList&        getMembersList();
     MembersMap&         getMembersCache();
