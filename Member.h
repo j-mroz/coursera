@@ -9,6 +9,10 @@
 
 #include "stdincludes.h"
 
+#include <memory>
+using std::unique_ptr;
+
+
 /**
  * CLASS NAME: q_elt
  *
@@ -54,70 +58,47 @@ public:
 	}
 };
 
-/**
- * CLASS NAME: MemberListEntry
- *
- * DESCRIPTION: Entry in the membership list
- */
-class MemberListEntry {
-public:
-	int id;
-	short port;
-	long heartbeat;
-	long timestamp;
-	MemberListEntry(int id, short port, long heartbeat, long timestamp);
-	MemberListEntry(int id, short port);
-	MemberListEntry(): id(0), port(0), heartbeat(0), timestamp(0) {}
-	MemberListEntry(const MemberListEntry &anotherMLE);
-	MemberListEntry& operator =(const MemberListEntry &anotherMLE);
-	int getid();
-	short getport();
-	long getheartbeat();
-	long gettimestamp();
-	void setid(int id);
-	void setport(short port);
-	void setheartbeat(long hearbeat);
-	void settimestamp(long timestamp);
+
+struct MemberListEntry {
+	int32_t id;
+	int16_t port;
+	int64_t heartbeat;
+	int64_t timestamp;
 };
 
+
 /**
- * CLASS NAME: Member
- *
- * DESCRIPTION: Class representing a member in the distributed system
+ * Class representing a member in the distributed system
  */
-// Declaration and definition here
 class Member {
 public:
+    // using MemberList = vector<MemberPtr>;
+    using MemberList = vector<MemberListEntry>;
+
 	// This member's Address
 	Address addr;
 	// boolean indicating if this member is up
-	bool inited;
+	bool inited        = false;
 	// boolean indicating if this member is in the group
-	bool inGroup;
+	bool inGroup       = false;
 	// boolean indicating if this member has failed
-	bool bFailed;
+	bool bFailed       = false;
 	// number of my neighbors
-	int nnb;
+	int nnb            = 0;
 	// the node's own heartbeat
-	long heartbeat;
-	// counter for next ping
-	int pingCounter;
-	// counter for ping timeout
-	int timeOutCounter;
+	long heartbeat     = 0;
+	int timestamp      = 0;
 	// Membership table
-	vector<MemberListEntry> memberList;
+    MemberList memberList;
+	// vector<MemberListEntry> memberList;
 	// My position in the membership table
-	vector<MemberListEntry>::iterator myPos;
+	//vector<MemberListEntry>::iterator myPos;
 	// Queue for failure detection messages
 	queue<q_elt> mp1q;
-	/**
-	 * Constructor
-	 */
-	Member(): inited(false), inGroup(false), bFailed(false), nnb(0), heartbeat(0), pingCounter(0), timeOutCounter(0) {}
-	// copy constructor
-	Member(const Member &anotherMember);
-	// Assignment operator overloading
-	Member& operator =(const Member &anotherMember);
+
+	Member()                                       = default;
+	Member(const Member &)                         = default;
+	Member& operator=(const Member &anotherMember) = default;
 	virtual ~Member() {}
 };
 

@@ -33,14 +33,6 @@ static int64_t addressHash(int32_t id, int16_t port) {
     return ((int64_t)id << 32) + port;
 }
 
-bool operator==(const MemberListEntry& lhs, const MemberListEntry& rhs) {
-    return addressHash(lhs.id, lhs.port) == addressHash(rhs.id, rhs.port);
-}
-
-size_t MemberListEntryHash::operator()(const MemberListEntry& member) const {
-    return addressHash(member.id, member.port);
-}
-
 /**
  *
  */
@@ -73,7 +65,7 @@ protected:
         auto gossipPeers = pickGossipGroup();
         for (auto peerIndex : gossipPeers) {
             auto &member = node->getMembersList()[peerIndex];
-            auto memberAddr = toAddress(member.getid(), member.getport());
+            auto memberAddr = toAddress(member.id, member.port);
             node->send(move(memberAddr), (char *)msg.data(), msg.size());
         }
     }
@@ -155,6 +147,8 @@ public:
 
     void run() {
         auto &members = node->getMembersList();
+        auto &activeMembers = node->getActiveMembers();
+        auto &failedMembers = node->getFailedMembers();
         auto timestamp = node->getTimestamp();
 
         // Move failed members to failed list
@@ -162,10 +156,16 @@ public:
             return timestamp - member.timestamp >= failTimeout;
         };
         for (auto &member : members) {
-            member = node->getCachedEntry(member);  // update from cache
+            auto hash = addressHash(member.id, member.port);
+
+            // get latest value from active list and write back to original list
+            auto activePos = activeMembers.find(hash);
+            if (activePos != activeMembers.end())
+                member = activePos->second;
+
             if (hasFailed(member)) {
-                node->getFailedMembers().insert(member);
-                node->getMembersCache().erase(addressHash(member.id, member.port));
+                failedMembers[hash] = member;
+                activeMembers.erase(hash);
             }
         }
         members.erase(remove_if(members.begin(), members.end(), hasFailed),
@@ -178,9 +178,11 @@ public:
 
         auto &failed = node->getFailedMembers();
         for (auto memberPos = failed.begin(); memberPos != failed.end(); ) {
-            if (isRemovable(*memberPos)) {
-                node->logNodeRemove(toAddress(memberPos->id, memberPos->port));
-                memberPos = node->getFailedMembers().erase(memberPos);
+
+            if (isRemovable(memberPos->second)) {
+                node->logNodeRemove(toAddress(memberPos->second.id,
+                                              memberPos->second.port));
+                memberPos = failed.erase(memberPos);
             } else {
                 ++memberPos;
             }
@@ -239,8 +241,7 @@ int MP1Node::init() {
     memberNode->inGroup = false;
     memberNode->nnb = 0;
     memberNode->heartbeat = 0;
-    memberNode->pingCounter = TFAIL;
-    memberNode->timeOutCounter = -1;
+    memberNode->timestamp = 0;
     memberNode->memberList.clear();
 
     return ESUCCESS;
@@ -382,7 +383,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
     auto req = getUnaligned<JoinRequest>(rawReq);
     send(toAddress(req.id, req.port), buff.data(), buff.size());
 
-    addMemberEntry({req.id, req.port, req.heartbeat, timestamp});
+    addMemberEntry({req.id, req.port, req.heartbeat, getTimestamp()});
 }
 
 
@@ -392,7 +393,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
 void MP1Node::handleJoinResponse(void *raw, size_t size) {
     auto rsp = getUnaligned<JoinResponse>(raw);
     auto *payload = (char*)raw + sizeof(JoinResponse);
-    addMemberEntry({rsp.id, rsp.port, rsp.heartbeat, timestamp});
+    addMemberEntry({rsp.id, rsp.port, rsp.heartbeat, getTimestamp()});
     handleMembersData(payload, rsp.membersCount);
     memberNode->inGroup = true;
 }
@@ -412,7 +413,7 @@ void MP1Node::handleAddMembersRequest(void *raw, size_t size) {
 void MP1Node::handleMembersData(char *buff, uint64_t count) {
     for (auto memberIdx = 0ull; memberIdx < count; ++memberIdx) {
         auto entry = getUnaligned<MemberData>((void*)buff);
-        addMemberEntry({entry.id, entry.port, entry.heartbeat, timestamp});
+        addMemberEntry({entry.id, entry.port, entry.heartbeat, getTimestamp()});
         buff += sizeof(entry);
     }
 }
@@ -422,13 +423,13 @@ void MP1Node::handleMembersData(char *buff, uint64_t count) {
  */
 void MP1Node::handleHeartbeat(void *rawReq, size_t size) {
     auto req = getUnaligned<Heartbeat>(rawReq);
-    failedPeers.erase({ req.id, req.port, 0, 0 });
 
     int64_t hash = addressHash(req.id, req.port);
-    auto peer = peersCache.find(hash);
-    if (peer != peersCache.end()) {
+    failedMembers.erase(hash);
+    auto peer = activeMembers.find(hash);
+    if (peer != activeMembers.end()) {
         peer->second.heartbeat = req.heartbeat;
-        peer->second.timestamp = timestamp;
+        peer->second.timestamp = getTimestamp();
     }
 }
 
@@ -438,21 +439,21 @@ void MP1Node::handleHeartbeat(void *rawReq, size_t size) {
  */
 void MP1Node::addMemberEntry(MemberListEntry entry) {
     auto hash = addressHash(entry.id, entry.port);
-    auto cachePos = peersCache.find(hash);
-    auto failedPos = failedPeers.find(entry);
+    auto activePos = activeMembers.find(hash);
+    auto failedPos = failedMembers.find(hash);
 
-    if (cachePos != peersCache.end() ) {
-        if (cachePos->second.heartbeat < entry.heartbeat) {
-            cachePos->second.heartbeat = entry.heartbeat;
-            cachePos->second.timestamp = entry.timestamp;
+    if (activePos != activeMembers.end() ) {
+        if (activePos->second.heartbeat < entry.heartbeat) {
+            activePos->second.heartbeat = entry.heartbeat;
+            activePos->second.timestamp = entry.timestamp;
         }
-    } else if (failedPos != failedPeers.end() &&
-               failedPos->heartbeat < entry.heartbeat) {
-        peersCache[hash] = move(entry);
-        failedPeers.erase(failedPos);
+    } else if (failedPos != failedMembers.end() &&
+               failedPos->second.heartbeat < entry.heartbeat) {
+        activeMembers[hash] = move(entry);
+        failedMembers.erase(failedPos);
         //logNodeAdd(toAddress(entry.id, entry.port));
-    } else if (failedPos == failedPeers.end()) {
-        peersCache[hash] = entry;
+    } else if (failedPos == failedMembers.end()) {
+        activeMembers[hash] = entry;
         memberNode->memberList.push_back(move(entry));
         logNodeAdd(toAddress(entry.id, entry.port));
     }
@@ -470,7 +471,6 @@ void MP1Node::runTasks() {
     for (auto &task : tasks) {
         task->run();
     }
-
 }
 
 /**
@@ -493,16 +493,8 @@ int64_t MP1Node::getHeartbeat() {
     return memberNode->heartbeat;
 }
 
-long MP1Node::getTimestamp() {
-    return timestamp;
-}
-
-MemberListEntry& MP1Node::getCachedEntry(MemberListEntry& entry) {
-    auto hash = addressHash(entry.id, entry.port);
-    auto pos = peersCache.find(hash);
-    if (pos != peersCache.end())
-        return pos->second;
-    return entry;
+int64_t MP1Node::getTimestamp() {
+    return memberNode->timestamp;
 }
 
 Member* MP1Node::getMemberNode() {
@@ -513,8 +505,8 @@ MP1Node::MembersList& MP1Node::getMembersList() {
     return memberNode->memberList;
 }
 
-MP1Node::MembersMap& MP1Node::getMembersCache() {
-    return peersCache;
+MP1Node::MembersMap& MP1Node::getActiveMembers() {
+    return activeMembers;
 }
 
 void MP1Node::advanceHeartbeat() {
@@ -522,11 +514,11 @@ void MP1Node::advanceHeartbeat() {
 }
 
 void MP1Node::advanceTimestamp() {
-    ++timestamp;
+    ++memberNode->timestamp;
 }
 
-MP1Node::MembersSet& MP1Node::getFailedMembers() {
-    return failedPeers;
+MP1Node::MembersMap& MP1Node::getFailedMembers() {
+    return failedMembers;
 }
 
 int MP1Node::send(Address addr, char *data, size_t len) {

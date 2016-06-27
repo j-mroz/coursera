@@ -77,12 +77,6 @@ struct _packed_ Heartbeat {
     int64_t heartbeat;
 };
 
-// Hashing forward declarations
-bool operator==(const MemberListEntry& lhs, const MemberListEntry& rhs);
-struct MemberListEntryHash {
-    size_t operator()(const MemberListEntry& member) const;
-};
-
 struct Task {
     virtual void run() = 0;
     virtual ~Task() { }
@@ -96,7 +90,6 @@ struct Task {
 class MP1Node {
 public:
     using MembersList = decltype( ((Member*)0)->memberList );
-    using MembersSet = std::unordered_set<MemberListEntry, MemberListEntryHash>;
     using MembersMap = std::unordered_map<int64_t, MemberListEntry>;
 
     MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
@@ -106,12 +99,11 @@ public:
     int32_t             getId();
     int16_t             getPort();
     int64_t             getHeartbeat();
-    long                getTimestamp();
+    int64_t             getTimestamp();
     Member*             getMemberNode();
-    MemberListEntry&    getCachedEntry(MemberListEntry& entry);
     MembersList&        getMembersList();
-    MembersMap&         getMembersCache();
-    MembersSet&         getFailedMembers();
+    MembersMap&         getActiveMembers();
+    MembersMap&         getFailedMembers();
     int                 send(Address addr, char *data, size_t len);
 
     void logNode(const char *fmt, ...);
@@ -150,9 +142,8 @@ private:
     Log         *log;
     Params      *par;
     Member      *memberNode;
-    MembersMap  peersCache;
-    MembersSet  failedPeers;
-    long        timestamp = 0;
+    MembersMap  activeMembers;
+    MembersMap  failedMembers;
     TasksList   tasks;
 };
 
