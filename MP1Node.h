@@ -1,8 +1,6 @@
 /**********************************
- * FILE NAME: MP1Node.cpp
- *
- * DESCRIPTION: Membership protocol run by this Node.
- * 				Header file of MP1Node class.
+ * Membership protocol run by this Node.
+ * Header file of MP1Node class.
  **********************************/
 
 #ifndef _MP1NODE_H_
@@ -15,33 +13,74 @@
 #include "EmulNet.h"
 #include "Queue.h"
 
-/**
- * Macros
- */
-#define TREMOVE 20
-#define TFAIL 5
+#include <functional>
+#include <memory>
+#include <unordered_set>
+#include <unordered_map>
 
-/*
- * Note: You can change/add any functions in MP1Node.{h,cpp}
- */
+#define TREMOVE 20    // Remove member timeout
+#define TFAIL   5     // Mark member as failed timeout
 
 /**
  * Message Types
  */
-enum MsgTypes{
+enum MsgTypes {
     JOINREQ,
-    JOINREP,
-    DUMMYLASTMSGTYPE
+    JOINRSP,
+    ADD_MEMBERS_REQ,
+    HEARTBEAT,
+    MSG_TYPES_COUNT
 };
 
-/**
- * STRUCT NAME: MessageHdr
- *
- * DESCRIPTION: Header and content of a message
- */
-typedef struct MessageHdr {
-	enum MsgTypes msgType;
-}MessageHdr;
+#define ESUCCESS 0
+#define EFAIL    1
+
+#define _packed_ __attribute__((packed, aligned(2)))
+
+struct _packed_ Request {
+    int16_t msgType;
+};
+
+struct _packed_ JoinRequest {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+};
+
+struct _packed_ JoinResponse {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+    uint64_t membersCount;
+};
+
+struct _packed_ MemberData {
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+};
+
+struct _packed_ AddMembersRequest {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+    uint64_t membersCount;
+};
+
+struct _packed_ Heartbeat {
+    int16_t msgType;
+    int32_t id;
+    int16_t port;
+    int64_t heartbeat;
+};
+
+struct Task {
+    virtual void run() = 0;
+    virtual ~Task() { }
+};
 
 /**
  * CLASS NAME: MP1Node
@@ -49,33 +88,63 @@ typedef struct MessageHdr {
  * DESCRIPTION: Class implementing Membership protocol functionalities for failure detection
  */
 class MP1Node {
-private:
-	EmulNet *emulNet;
-	Log *log;
-	Params *par;
-	Member *memberNode;
-	char NULLADDR[6];
-
 public:
-	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
-	Member * getMemberNode() {
-		return memberNode;
-	}
-	int recvLoop();
-	static int enqueueWrapper(void *env, char *buff, int size);
-	void nodeStart(char *servaddrstr, short serverport);
-	int initThisNode(Address *joinaddr);
-	int introduceSelfToGroup(Address *joinAddress);
-	int finishUpThisNode();
-	void nodeLoop();
-	void checkMessages();
-	bool recvCallBack(void *env, char *data, int size);
-	void nodeLoopOps();
-	int isNullAddress(Address *addr);
-	Address getJoinAddress();
-	void initMemberListTable(Member *memberNode);
-	void printAddress(Address *addr);
-	virtual ~MP1Node();
+    using MembersList = decltype( ((Member*)0)->memberList );
+    using MembersMap = std::unordered_map<int64_t, MemberListEntry>;
+
+    MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
+    virtual ~MP1Node();
+
+// Handlers API
+    int32_t             getId();
+    int16_t             getPort();
+    int64_t             getHeartbeat();
+    int64_t             getTimestamp();
+    Member*             getMemberNode();
+    MembersList&        getMembersList();
+    MembersMap&         getActiveMembers();
+    MembersMap&         getFailedMembers();
+    int                 send(Address addr, char *data, size_t len);
+
+    void logNode(const char *fmt, ...);
+    void logNodeAdd(Address other);
+    void logNodeRemove(Address other);
+
+// Emulator API
+    int     init();
+    int     join(Address *joinAddress);
+    int     finishUpThisNode();
+    void    nodeStart(char *servaddrstr, short serverport);
+    void    nodeLoop();
+    int     recvLoop();
+
+private:
+    void    drainIngressQueue();
+    void    runTasks();
+
+    int     handleRequest(void *env, char *data, int size);
+    void    handleJoinRequest(void *data, size_t size);
+    void    handleJoinResponse(void *data, size_t size);
+    void    handleAddMembersRequest(void *data, size_t size);
+    void    handleHeartbeat(void *rawReq, size_t size);
+    void    handleMembersData(char *buff, uint64_t count);
+
+    void    updateMemberEntry(MemberListEntry entry);
+    void    advanceHeartbeat();
+    void    advanceTimestamp();
+
+    Address getJoinAddress();
+
+private:
+    using TasksList = vector<unique_ptr<Task>>;
+
+    EmulNet     *emulNet;
+    Log         *log;
+    Params      *par;
+    Member      *memberNode;
+    MembersMap  activeMembers;
+    MembersMap  failedMembers;
+    TasksList   tasks;
 };
 
 #endif /* _MP1NODE_H_ */

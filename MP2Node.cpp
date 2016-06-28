@@ -74,8 +74,8 @@ vector<Node> MP2Node::getMembershipList() {
 	vector<Node> curMemList;
 	for ( i = 0 ; i < this->memberNode->memberList.size(); i++ ) {
 		Address addressOfThisMember;
-		int id = this->memberNode->memberList.at(i).getid();
-		short port = this->memberNode->memberList.at(i).getport();
+		int id = this->memberNode->memberList.at(i).id;
+		short port = this->memberNode->memberList.at(i).port;
 		memcpy(&addressOfThisMember.addr[0], &id, sizeof(int));
 		memcpy(&addressOfThisMember.addr[4], &port, sizeof(short));
 		curMemList.emplace_back(Node(addressOfThisMember));

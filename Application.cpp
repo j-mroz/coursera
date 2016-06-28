@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 	// Call the run function
 	app->run();
 	// When done delete the application object
-	delete(app);
+	delete app;
 
 	return SUCCESS;
 }
@@ -46,15 +46,16 @@ int main(int argc, char *argv[]) {
  */
 Application::Application(char *infile) {
 	int i;
-	par = new Params();
 	srand (time(NULL));
-	par->setparams(infile);
-	log = new Log(par);
-	en = new EmulNet(par);
-	en1 = new EmulNet(par);
-	mp1 = (MP1Node **) malloc(par->EN_GPSZ * sizeof(MP1Node *));
-	mp2 = (MP2Node **) malloc(par->EN_GPSZ * sizeof(MP2Node *));
 
+	par = unique_ptr<Params>(new Params);
+	par->setparams(infile);
+
+	log = unique_ptr<Log>(new Log(par.get()));
+	en = unique_ptr<EmulNet>(new EmulNet(par.get()));
+    en1 = unique_ptr<EmulNet>(new EmulNet(par.get()));
+	mp1.resize(par->EN_GPSZ);
+    mp2.resize(par->EN_GPSZ);
 	/*
 	 * Init all nodes
 	 */
@@ -65,8 +66,14 @@ Application::Application(char *infile) {
 		Address joinaddr;
 		joinaddr = getjoinaddr();
 		addressOfMemberNode = (Address *) en->ENinit(addressOfMemberNode, par->PORTNUM);
-		mp1[i] = new MP1Node(memberNode, par, en, log, addressOfMemberNode);
-		mp2[i] = new MP2Node(memberNode, par, en1, log, addressOfMemberNode);
+        mp1[i] = unique_ptr<MP1Node>(new MP1Node(memberNode, par.get(),
+                                                en.get(),
+                                                log.get(),
+                                                addressOfMemberNode));
+        mp2[i] = unique_ptr<MP2Node>(new MP2Node(memberNode, par.get(),
+                                                en1.get(),
+                                                log.get(),
+                                                addressOfMemberNode));
 		log->LOG(&(mp1[i]->getMemberNode()->addr), "APP");
 		log->LOG(&(mp2[i]->getMemberNode()->addr), "APP MP2");
 		delete addressOfMemberNode;
@@ -77,16 +84,6 @@ Application::Application(char *infile) {
  * Destructor
  */
 Application::~Application() {
-	delete log;
-	delete en;
-	delete en1;
-	for ( int i = 0; i < par->EN_GPSZ; i++ ) {
-		delete mp1[i];
-		delete mp2[i];
-	}
-	free(mp1);
-	free(mp2);
-	delete par;
 }
 
 /**

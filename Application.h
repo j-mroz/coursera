@@ -18,6 +18,11 @@
 #include "Node.h"
 #include "common.h"
 
+#include <memory>
+#include <vector>
+using std::unique_ptr;
+using std::vector;
+
 /**
  * global variables
  */
@@ -51,13 +56,13 @@ private:
 	// Address for introduction to the group
 	// Coordinator Node
 	char JOINADDR[30];
-	EmulNet *en;
-	EmulNet *en1;
-    Log *log;
-	MP1Node **mp1;
-	MP2Node **mp2;
-	Params *par;
-	map<string, string> testKVPairs;
+	unique_ptr<Params>          par;
+	unique_ptr<EmulNet>         en;
+    unique_ptr<EmulNet>         en1;
+	unique_ptr<Log>             log;
+	vector<unique_ptr<MP1Node>> mp1;
+    vector<unique_ptr<MP2Node>> mp2;
+	map<string, string>         testKVPairs;
 public:
 	Application(char *);
 	virtual ~Application();

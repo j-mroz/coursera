@@ -50,7 +50,7 @@ void Log::LOG(Address *addr, const char * str, ...) {
 	static int numwrites;
 	static char stdstring[30];
 	static char stdstring2[40];
-	static char stdstring3[40]; 
+	static char stdstring3[40];
 	static int dbg_opened=0;
 
 	if(dbg_opened != 639){
@@ -68,9 +68,8 @@ void Log::LOG(Address *addr, const char * str, ...) {
 
 		dbg_opened=639;
 	}
-	else 
-
-	sprintf(stdstring, "%d.%d.%d.%d:%d ", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3], *(short *)&addr->addr[4]);
+	else
+		sprintf(stdstring, "%d.%d.%d.%d:%d ", addr->addr[0], addr->addr[1], addr->addr[2], addr->addr[3], *(short *)&addr->addr[4]);
 
 	va_start(vararglist, str);
 	vsprintf(buffer, str, vararglist);
@@ -114,7 +113,7 @@ void Log::LOG(Address *addr, const char * str, ...) {
  * DESCRIPTION: To Log a node add
  */
 void Log::logNodeAdd(Address *thisNode, Address *addedAddr) {
-	static char stdstring[100];
+	static char stdstring[200];
 	sprintf(stdstring, "Node %d.%d.%d.%d:%d joined at time %d", addedAddr->addr[0], addedAddr->addr[1], addedAddr->addr[2], addedAddr->addr[3], *(short *)&addedAddr->addr[4], par->getcurrtime());
     LOG(thisNode, stdstring);
 }
@@ -125,8 +124,8 @@ void Log::logNodeAdd(Address *thisNode, Address *addedAddr) {
  * DESCRIPTION: To log a node remove
  */
 void Log::logNodeRemove(Address *thisNode, Address *removedAddr) {
-	static char stdstring[30];
-	sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
+	static char stdstring[200];
+	int written = sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
     LOG(thisNode, stdstring);
 }
 
@@ -136,7 +135,7 @@ void Log::logNodeRemove(Address *thisNode, Address *removedAddr) {
  * DESCRTION: Call this function after successfully create a key value pair
  */
 void Log::logCreateSuccess(Address * address, bool isCoordinator, int transID, string key, string value){
-	static char stdstring[100];
+	static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -152,7 +151,7 @@ void Log::logCreateSuccess(Address * address, bool isCoordinator, int transID, s
  * DESCRIPTION: Call this function after successfully reading a key
  */
 void Log::logReadSuccess(Address * address, bool isCoordinator, int transID, string key, string value){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -168,7 +167,7 @@ void Log::logReadSuccess(Address * address, bool isCoordinator, int transID, str
  * DESCRIPTION: Call this function after successfully updating a key
  */
 void Log::logUpdateSuccess(Address * address, bool isCoordinator, int transID, string key, string newValue){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -184,7 +183,7 @@ void Log::logUpdateSuccess(Address * address, bool isCoordinator, int transID, s
  * DESCRIPTION: Call this function after successfully deleting a key
  */
 void Log::logDeleteSuccess(Address * address, bool isCoordinator, int transID, string key){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -200,7 +199,7 @@ void Log::logDeleteSuccess(Address * address, bool isCoordinator, int transID, s
  * DESCRIPTION: Call this function if CREATE failed
  */
 void Log::logCreateFail(Address * address, bool isCoordinator, int transID, string key, string value){
-	static char stdstring[100];
+	static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -217,7 +216,7 @@ void Log::logCreateFail(Address * address, bool isCoordinator, int transID, stri
  * DESCRIPTION: Call this function if READ failed
  */
 void Log::logReadFail(Address * address, bool isCoordinator, int transID, string key){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -233,7 +232,7 @@ void Log::logReadFail(Address * address, bool isCoordinator, int transID, string
  * DESCRIPTION: Call this function if UPDATE failed
  */
 void Log::logUpdateFail(Address * address, bool isCoordinator, int transID, string key, string newValue){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";
@@ -249,7 +248,7 @@ void Log::logUpdateFail(Address * address, bool isCoordinator, int transID, stri
  * DESCRIPTION: Call this function if DELETE failed
  */
 void Log::logDeleteFail(Address * address, bool isCoordinator, int transID, string key){
-    static char stdstring[100];
+    static char stdstring[200];
 	string str;
 	if (isCoordinator)
 		str = "coordinator";

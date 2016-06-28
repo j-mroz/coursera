@@ -8,6 +8,10 @@
 #***********************
 
 CFLAGS =  -Wall -g -std=c++11
+LDFLAGS = -Wl,fsanitize=safe-stack
+# CXX = /usr/local/bin/g++-5
+CXX = g++
+# CXX = clang++
 
 all: Application
 
