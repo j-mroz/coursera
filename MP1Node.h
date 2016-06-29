@@ -92,8 +92,8 @@ public:
     using MembersList = decltype( ((Member*)0)->memberList );
     using MembersMap = std::unordered_map<int64_t, MemberListEntry>;
 
-    MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
-    virtual ~MP1Node();
+    MP1Node(shared_ptr<Member>, Params *, EmulNet *, Log *, Address);
+    virtual ~MP1Node() = default;
 
 // Handlers API
     int32_t             getId();
@@ -122,7 +122,7 @@ private:
     void    drainIngressQueue();
     void    runTasks();
 
-    int     handleRequest(void *env, char *data, int size);
+    int     handleRequest(char *data, int size);
     void    handleJoinRequest(void *data, size_t size);
     void    handleJoinResponse(void *data, size_t size);
     void    handleAddMembersRequest(void *data, size_t size);
@@ -138,13 +138,13 @@ private:
 private:
     using TasksList = vector<unique_ptr<Task>>;
 
-    EmulNet     *emulNet;
-    Log         *log;
-    Params      *par;
-    Member      *memberNode;
-    MembersMap  activeMembers;
-    MembersMap  failedMembers;
-    TasksList   tasks;
+    EmulNet             *emulNet;
+    Log                 *log;
+    Params              *par;
+    shared_ptr<Member>  memberNode;
+    MembersMap          activeMembers;
+    MembersMap          failedMembers;
+    TasksList           tasks;
 };
 
 #endif /* _MP1NODE_H_ */

@@ -4,55 +4,58 @@
 #*
 #* Current file: Makefile
 #* About this file: Build Script.
-#* 
+#*
 #***********************
 
 CFLAGS =  -Wall -g -std=c++11
-LDFLAGS = -Wl,fsanitize=safe-stack
-# CXX = /usr/local/bin/g++-5
+LDFLAGS = -g
+#CXX = /usr/local/bin/g++-6
 CXX = g++
-# CXX = clang++
+# CXX = clan${CXX}
 
 all: Application
 
-Application: MP1Node.o EmulNet.o Application.o Log.o Params.o Member.o Trace.o MP2Node.o Node.o HashTable.o Entry.o Message.o 
-	g++ -o Application MP1Node.o EmulNet.o Application.o Log.o Params.o Member.o Trace.o MP2Node.o Node.o HashTable.o Entry.o Message.o ${CFLAGS}
+Application: MP1Node.o EmulNet.o Application.o Log.o Params.o Member.o Trace.o MP2Node.o Node.o HashTable.o Entry.o Message.o Transport.o
+	${CXX} -o Application MP1Node.o EmulNet.o Application.o Log.o Params.o Member.o Trace.o MP2Node.o Node.o HashTable.o Entry.o Message.o Transport.o ${CFLAGS}
 
 MP1Node.o: MP1Node.cpp MP1Node.h Log.h Params.h Member.h EmulNet.h Queue.h
-	g++ -c MP1Node.cpp ${CFLAGS}
+	${CXX} -c MP1Node.cpp ${CFLAGS}
 
 EmulNet.o: EmulNet.cpp EmulNet.h Params.h Member.h
-	g++ -c EmulNet.cpp ${CFLAGS}
+	${CXX} -c EmulNet.cpp ${CFLAGS}
 
-Application.o: Application.cpp Application.h Member.h Log.h Params.h Member.h EmulNet.h Queue.h 
-	g++ -c Application.cpp ${CFLAGS}
+Application.o: Application.cpp Application.h Member.h Log.h Params.h Member.h EmulNet.h Queue.h
+	${CXX} -c Application.cpp ${CFLAGS}
 
 Log.o: Log.cpp Log.h Params.h Member.h
-	g++ -c Log.cpp ${CFLAGS}
+	${CXX} -c Log.cpp ${CFLAGS}
 
-Params.o: Params.cpp Params.h 
-	g++ -c Params.cpp ${CFLAGS}
+Params.o: Params.cpp Params.h
+	${CXX} -c Params.cpp ${CFLAGS}
 
 Member.o: Member.cpp Member.h
-	g++ -c Member.cpp ${CFLAGS}
+	${CXX} -c Member.cpp ${CFLAGS}
 
 Trace.o: Trace.cpp Trace.h
-	g++ -c Trace.cpp ${CFLAGS}
+	${CXX} -c Trace.cpp ${CFLAGS}
 
-MP2Node.o: MP2Node.cpp MP2Node.h EmulNet.h Params.h Member.h Trace.h Node.h HashTable.h Log.h Params.h Message.h
-	g++ -c MP2Node.cpp ${CFLAGS}
+MP2Node.o: MP2Node.cpp MP2Node.h EmulNet.h Params.h Member.h Trace.h Node.h HashTable.h Log.h Params.h Message.h Transport.h
+	${CXX} -c MP2Node.cpp ${CFLAGS}
 
 Node.o: Node.cpp Node.h Member.h
-	g++ -c Node.cpp ${CFLAGS}
+	${CXX} -c Node.cpp ${CFLAGS}
 
 HashTable.o: HashTable.cpp HashTable.h common.h Entry.h
-	g++ -c HashTable.cpp ${CFLAGS}
+	${CXX} -c HashTable.cpp ${CFLAGS}
 
 Entry.o: Entry.cpp Entry.h Message.h
-	g++ -c Entry.cpp ${CFLAGS}
+	${CXX} -c Entry.cpp ${CFLAGS}
 
 Message.o: Message.cpp Message.h Member.h common.h
-	g++ -c Message.cpp ${CFLAGS}
+	${CXX} -c Message.cpp ${CFLAGS}
+
+Transport.o: Transport.cpp Transport.h Member.h
+	${CXX} -c Transport.cpp ${CFLAGS}
 
 clean:
 	rm -rf *.o Application dbg.log msgcount.log stats.log machine.log

@@ -1,331 +1,316 @@
-/**********************************
- * FILE NAME: MP2Node.cpp
- *
- * DESCRIPTION: MP2Node class definition
- **********************************/
 #include "MP2Node.h"
-
-/**
- * constructor
- */
-MP2Node::MP2Node(Member *memberNode, Params *par, EmulNet * emulNet, Log * log, Address * address) {
-	this->memberNode = memberNode;
-	this->par = par;
-	this->emulNet = emulNet;
-	this->log = log;
-	ht = new HashTable();
-	this->memberNode->addr = *address;
-}
-
-/**
- * Destructor
- */
-MP2Node::~MP2Node() {
-	delete ht;
-	delete memberNode;
-}
-
-/**
- * FUNCTION NAME: updateRing
- *
- * DESCRIPTION: This function does the following:
- * 				1) Gets the current membership list from the Membership Protocol (MP1Node)
- * 				   The membership list is returned as a vector of Nodes. See Node class in Node.h
- * 				2) Constructs the ring based on the membership list
- * 				3) Calls the Stabilization Protocol
- */
-void MP2Node::updateRing() {
-	/*
-	 * Implement this. Parts of it are already implemented
-	 */
-	vector<Node> curMemList;
-	bool change = false;
-
-	/*
-	 *  Step 1. Get the current membership list from Membership Protocol / MP1
-	 */
-	curMemList = getMembershipList();
-
-	/*
-	 * Step 2: Construct the ring
-	 */
-	// Sort the list based on the hashCode
-	sort(curMemList.begin(), curMemList.end());
+#include "Transport.h"
+#include <utility>
 
 
-	/*
-	 * Step 3: Run the stabilization protocol IF REQUIRED
-	 */
-	// Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
-}
+namespace dsproto {
 
-/**
- * FUNCTION NAME: getMemberhipList
- *
- * DESCRIPTION: This function goes through the membership list from the Membership protocol/MP1 and
- * 				i) generates the hash code for each member
- * 				ii) populates the ring member in MP2Node class
- * 				It returns a vector of Nodes. Each element in the vector contain the following fields:
- * 				a) Address of the node
- * 				b) Hash code obtained by consistent hashing of the Address
- */
-vector<Node> MP2Node::getMembershipList() {
-	unsigned int i;
-	vector<Node> curMemList;
-	for ( i = 0 ; i < this->memberNode->memberList.size(); i++ ) {
-		Address addressOfThisMember;
-		int id = this->memberNode->memberList.at(i).id;
-		short port = this->memberNode->memberList.at(i).port;
-		memcpy(&addressOfThisMember.addr[0], &id, sizeof(int));
-		memcpy(&addressOfThisMember.addr[4], &port, sizeof(short));
-		curMemList.emplace_back(Node(addressOfThisMember));
-	}
-	return curMemList;
-}
+class Message {
+public:
+    using Header = dsproto::Header;
 
-/**
- * FUNCTION NAME: hashFunction
- *
- * DESCRIPTION: This functions hashes the key and returns the position on the ring
- * 				HASH FUNCTION USED FOR CONSISTENT HASHING
- *
- * RETURNS:
- * size_t position on the ring
- */
-size_t MP2Node::hashFunction(string key) {
-	std::hash<string> hashFunc;
-	size_t ret = hashFunc(key);
-	return ret%RING_SIZE;
-}
-
-/**
- * FUNCTION NAME: clientCreate
- *
- * DESCRIPTION: client side CREATE API
- * 				The function does the following:
- * 				1) Constructs the message
- * 				2) Finds the replicas of this key
- * 				3) Sends a message to the replica
- */
-void MP2Node::clientCreate(string key, string value) {
-	/*
-	 * Implement this
-	 */
-}
-
-/**
- * FUNCTION NAME: clientRead
- *
- * DESCRIPTION: client side READ API
- * 				The function does the following:
- * 				1) Constructs the message
- * 				2) Finds the replicas of this key
- * 				3) Sends a message to the replica
- */
-void MP2Node::clientRead(string key){
-	/*
-	 * Implement this
-	 */
-}
-
-/**
- * FUNCTION NAME: clientUpdate
- *
- * DESCRIPTION: client side UPDATE API
- * 				The function does the following:
- * 				1) Constructs the message
- * 				2) Finds the replicas of this key
- * 				3) Sends a message to the replica
- */
-void MP2Node::clientUpdate(string key, string value){
-	/*
-	 * Implement this
-	 */
-}
-
-/**
- * FUNCTION NAME: clientDelete
- *
- * DESCRIPTION: client side DELETE API
- * 				The function does the following:
- * 				1) Constructs the message
- * 				2) Finds the replicas of this key
- * 				3) Sends a message to the replica
- */
-void MP2Node::clientDelete(string key){
-	/*
-	 * Implement this
-	 */
-}
-
-/**
- * FUNCTION NAME: createKeyValue
- *
- * DESCRIPTION: Server side CREATE API
- * 			   	The function does the following:
- * 			   	1) Inserts key value into the local hash table
- * 			   	2) Return true or false based on success or failure
- */
-bool MP2Node::createKeyValue(string key, string value, ReplicaType replica) {
-	/*
-	 * Implement this
-	 */
-	// Insert key, value, replicaType into the hash table
-}
-
-/**
- * FUNCTION NAME: readKey
- *
- * DESCRIPTION: Server side READ API
- * 			    This function does the following:
- * 			    1) Read key from local hash table
- * 			    2) Return value
- */
-string MP2Node::readKey(string key) {
-	/*
-	 * Implement this
-	 */
-	// Read key from local hash table and return value
-}
-
-/**
- * FUNCTION NAME: updateKeyValue
- *
- * DESCRIPTION: Server side UPDATE API
- * 				This function does the following:
- * 				1) Update the key to the new value in the local hash table
- * 				2) Return true or false based on success or failure
- */
-bool MP2Node::updateKeyValue(string key, string value, ReplicaType replica) {
-	/*
-	 * Implement this
-	 */
-	// Update key in local hash table and return true or false
-}
-
-/**
- * FUNCTION NAME: deleteKey
- *
- * DESCRIPTION: Server side DELETE API
- * 				This function does the following:
- * 				1) Delete the key from the local hash table
- * 				2) Return true or false based on success or failure
- */
-bool MP2Node::deletekey(string key) {
-	/*
-	 * Implement this
-	 */
-	// Delete the key from the local hash table
-}
-
-/**
- * FUNCTION NAME: checkMessages
- *
- * DESCRIPTION: This function is the message handler of this node.
- * 				This function does the following:
- * 				1) Pops messages from the queue
- * 				2) Handles the messages according to message types
- */
-void MP2Node::checkMessages() {
-	/*
-	 * Implement this. Parts of it are already implemented
-	 */
-	char * data;
-	int size;
-
-	/*
-	 * Declare your local variables here
-	 */
-
-	// dequeue all messages and handle them
-	while ( !memberNode->mp2q.empty() ) {
-		/*
-		 * Pop a message from the queue
-		 */
-		data = (char *)memberNode->mp2q.front().elt;
-		size = memberNode->mp2q.front().size;
-		memberNode->mp2q.pop();
-
-		string message(data, data + size);
-
-		/*
-		 * Handle the message types here
-		 */
-
-	}
-
-	/*
-	 * This function should also ensure all READ and UPDATE operation
-	 * get QUORUM replies
-	 */
-}
-
-/**
- * FUNCTION NAME: findNodes
- *
- * DESCRIPTION: Find the replicas of the given keyfunction
- * 				This function is responsible for finding the replicas of a key
- */
-vector<Node> MP2Node::findNodes(string key) {
-	size_t pos = hashFunction(key);
-	vector<Node> addr_vec;
-	if (ring.size() >= 3) {
-		// if pos <= min || pos > max, the leader is the min
-		if (pos <= ring.at(0).getHashCode() || pos > ring.at(ring.size()-1).getHashCode()) {
-			addr_vec.emplace_back(ring.at(0));
-			addr_vec.emplace_back(ring.at(1));
-			addr_vec.emplace_back(ring.at(2));
-		}
-		else {
-			// go through the ring until pos <= node
-			for (int i=1; i<ring.size(); i++){
-				Node addr = ring.at(i);
-				if (pos <= addr.getHashCode()) {
-					addr_vec.emplace_back(addr);
-					addr_vec.emplace_back(ring.at((i+1)%ring.size()));
-					addr_vec.emplace_back(ring.at((i+2)%ring.size()));
-					break;
-				}
-			}
-		}
-	}
-	return addr_vec;
-}
-
-/**
- * FUNCTION NAME: recvLoop
- *
- * DESCRIPTION: Receive messages from EmulNet and push into the queue (mp2q)
- */
-bool MP2Node::recvLoop() {
-    if ( memberNode->bFailed ) {
-    	return false;
+    Message() = default;
+    Message(uint8_t type, Address addr) {
+        this->type = type;
+        this->status = 0;
+        this->replicaType = 0;
+        this->transaction = 0;
+        this->address = addr;
     }
-    else {
-    	return emulNet->ENrecv(&(memberNode->addr), this->enqueueWrapper, NULL, 1, &(memberNode->mp2q));
+
+    void setKeyValue(string key, string val) {
+        this->key = move(key);
+        this->value = move(val);
     }
+
+    void setTransaction(uint32_t transaction) {
+        this->transaction = transaction;
+    }
+
+    Address getAddress() {
+        return address;
+    }
+
+    string str() {
+        static const char* typeRepr[] = {
+            "CREATE", "READ", "UPDATE", "DELETE", "REPLY", "READREPLY"
+        };
+        auto append = [](string &lhs, const string &val) {
+            lhs.append(val);
+            lhs.append("::");
+        };
+
+        string repr;
+        repr.reserve(200);
+        append(repr, to_string(transaction));
+        append(repr, address.str());
+        append(repr, typeRepr[type]);
+        if (key.size() > 0)
+            append(repr, key);
+        if (key.size() > 0 and value.size() > 0)
+            append(repr, value);
+
+        return repr;
+    }
+
+    vector<char> serialize() {
+        vector<char> msgbuff;
+
+        auto headerSize = sizeof(dsproto::Header);
+        auto keySize = (uint32_t)key.size() + 1;
+        auto valSize = (uint32_t)value.size() + 1;
+        auto payloadSize = (uint32_t)sizeof(keySize) + keySize +
+                           (uint32_t)sizeof(valSize) + valSize;
+        msgbuff.resize(headerSize + payloadSize + 1, 0);
+
+        bool addKey = keySize > 1;
+        bool addVal = addKey && (valSize > 1);
+        bool addStatus = false;
+        bool addReplicaType = false;
+
+        uint8_t flags =
+            (addKey         ? dsproto::flags::KEY       : 0u) |
+            (addVal         ? dsproto::flags::VAL       : 0u) |
+            (addStatus      ? dsproto::flags::STATUS    : 0u) |
+            (addReplicaType ? dsproto::flags::REPLICA   : 0u);
+
+        auto *header = (dsproto::Header *)msgbuff.data();
+        *header = dsproto::Header {
+            dsproto::magic,
+            dsproto::version,
+            type,
+            flags,
+            transaction,
+            address.getIp(),
+            address.getPort(),
+            0,
+            payloadSize
+        };
+
+        auto *offset = msgbuff.data() + sizeof(dsproto::Header);
+        auto addStringToken = [&](const string &val) {
+            auto valSize = (uint32_t)val.size() + 1;
+            memcpy(offset, (char *)&valSize, sizeof(valSize));
+            memcpy(offset + sizeof(valSize), val.data(), valSize);
+            offset += sizeof(valSize) + valSize;
+        };
+
+        if (addKey)
+            addStringToken(key);
+        if (addVal)
+            addStringToken(value);
+
+        return msgbuff;
+    }
+
+    static Message deserialize(char *data, size_t size) {
+        dsproto::Header header;
+        memcpy((char *)&header, data, sizeof(Header));
+
+        auto msg =  Message {
+            header.msgType, Address(header.id, header.port)
+        };
+        msg.transaction = header.transaction;
+
+        auto hasKey     = !!(header.flags & dsproto::flags::KEY);
+        auto hasValue   = !!(header.flags & dsproto::flags::VAL);
+        auto hasStatus  = !!(header.flags & dsproto::flags::STATUS);
+        auto hasReplica = !!(header.flags & dsproto::flags::REPLICA);
+
+
+        auto *offset = data + sizeof(header);
+        auto nextStringToken = [&](string &val) {
+            uint32_t valSize;
+            assert(offset - data <= size);
+            memcpy(&valSize, offset, sizeof(valSize));
+            assert(offset - data + valSize <= size);
+            val += (offset + sizeof(valSize));
+            offset += sizeof(valSize) + valSize;
+        };
+
+        if (hasKey) {
+            nextStringToken(msg.key);
+        }
+        if (hasValue) {
+            nextStringToken(msg.value);
+        }
+
+        return msg;
+    }
+
+private:
+    uint8_t type;
+    uint8_t status;
+    uint8_t replicaType;
+    uint32_t transaction;
+    string  key;
+    string  value;
+    Address address;
+
+};
+
+class Protocol {
+    using Msg = Message;
+public:
+    Protocol(shared_ptr<net::Transport> net) {
+        net_ = net;
+    }
+
+    void send(Address remote, Msg &msg) {
+        auto msgbuff = msg.serialize();
+        if (auto net = net_.lock()) {
+            net->send(remote, msgbuff.data(), msgbuff.size());
+        }
+    }
+
+    Msg recieve() {
+        Msg msg;
+        if (auto net = net_.lock()) {
+            auto buf = net->recieve();
+            msg = Msg::deserialize((char *)buf.data, buf.size);
+            free(buf.data);
+        }
+        return msg;
+    }
+
+    Msg buildCreate(string &&key, string &&value) {
+        Address addr;
+        if (auto net = net_.lock())
+            addr = net->getAddress();
+
+        auto msg = Msg { dsproto::CREATE, addr };
+        msg.setKeyValue(key, value);
+        msg.setTransaction(++transaction);
+
+        return msg;
+    }
+
+
+private:
+    weak_ptr<net::Transport> net_;
+    int32_t transaction = 0;
+};
+
+}
+
+class Coordinator {
+public:
+
+    Coordinator(dsproto::Protocol *proto) {
+        this->proto = proto;
+    }
+
+    void create(string &&key, string &&value) {
+        auto msg = proto->buildCreate(move(key), move(value));
+        //TODO self send, just for now
+        proto->send(msg.getAddress(), msg);
+        printf("send: %s\n", msg.str().data());
+    }
+
+private:
+    dsproto::Protocol *proto;
+};
+
+class StoreNodeImpl {
+    friend class StoreNode;
+
+public:
+    StoreNodeImpl(shared_ptr<Member> member,
+                  shared_ptr<net::Transport> transport, Log *log)
+            : member(member), transport(transport), proto(transport),
+                coordinator(&proto), log(log) {
+    }
+
+    void create(string &&key, string &&value) {
+        coordinator.create(move(key), move(value));
+    }
+
+    void read(const string &key) {
+    }
+
+    void update(const string &key, const string &value) {
+    }
+
+    void remove(const string &key) {
+    }
+
+    bool drainTransportLayer() {
+        return transport->drain();
+    }
+
+    bool drainIngressQueue() {
+        while (transport->pollnb()) {
+            auto msg = proto.recieve();
+            printf("recv: %s\n", msg.str().data());
+        }
+        return true;
+    }
+
+
+private:
+    shared_ptr<Member>          member;
+    shared_ptr<net::Transport>  transport;
+    dsproto::Protocol           proto;
+    Coordinator                 coordinator;
+    Log                         *log;
+};
+
+
+/**
+ * Constructs default implementation
+ */
+StoreNode::StoreNode(shared_ptr<Member> member, Params*,
+                     EmulNet *emulNet, Log *log, Address *address)
+        : StoreNode(new StoreNodeImpl{
+            member,
+            make_shared<net::Transport>(emulNet, &member->mp2q, *address),
+            log
+        }) {
 }
 
 /**
- * FUNCTION NAME: enqueueWrapper
- *
- * DESCRIPTION: Enqueue the message from Emulnet into the queue of MP2Node
+ * Dependency injection constructor
  */
-int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
-	Queue q;
-	return q.enqueue((queue<q_elt> *)env, (void *)buff, size);
+StoreNode::StoreNode(StoreNodeImpl* impl) {
+    this->impl = unique_ptr<StoreNodeImpl>(impl);
 }
-/**
- * FUNCTION NAME: stabilizationProtocol
- *
- * DESCRIPTION: This runs the stabilization protocol in case of Node joins and leaves
- * 				It ensures that there always 3 copies of all keys in the DHT at all times
- * 				The function does the following:
- *				1) Ensures that there are three "CORRECT" replicas of all the keys in spite of failures and joins
- *				Note:- "CORRECT" replicas implies that every key is replicated in its two neighboring nodes in the ring
- */
-void MP2Node::stabilizationProtocol() {
-	/*
-	 * Implement this
-	 */
+
+StoreNode::~StoreNode() {
 }
+
+/* Store Node Pimpl dispatchers */
+void StoreNode::clientCreate(string key, string value) {
+    return impl->create(move(key), move(value));
+}
+
+void StoreNode::clientRead(const string &key) {
+    return impl->read(key);
+}
+
+void StoreNode::clientUpdate(const string &key, const string &value) {
+    return impl->update(key, value);
+}
+
+void StoreNode::clientDelete(const string &key) {
+    return impl->remove(key);
+}
+
+bool StoreNode::recvLoop() {
+    return impl->drainTransportLayer();
+}
+
+void StoreNode::checkMessages() {
+    impl->drainIngressQueue();
+}
+
+vector<Node> StoreNode::findNodes(const string &key) {
+	return vector<Node>();
+}
+
+void StoreNode::updateRing() {
+}
+
+Member* StoreNode::getMemberNode() {
+    return impl->member.get();
+}
+/* Store Node Pimpl dispatchers end */

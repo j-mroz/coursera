@@ -8,7 +8,7 @@
 #include <numeric>
 
 template <typename Aligned>
-Aligned getUnaligned(void *ptr) {
+static Aligned getUnaligned(void *ptr) {
     Aligned result;
     memcpy((char*)&result, (char*)ptr, sizeof(Aligned));
     return result;
@@ -194,10 +194,11 @@ public:
  * You can add new members to the class if you think it
  * is necessary for your logic to work
  */
-MP1Node::MP1Node(Member *member, Params *params,
-                EmulNet *emul, Log *log, Address *address) {
-    this->memberNode = member;
-    this->memberNode->addr = *address;
+MP1Node::MP1Node(shared_ptr<Member> member, Params *params,
+                EmulNet *emul, Log *log, Address address)
+        : memberNode(member)
+{
+    this->memberNode->addr = move(address);
     this->emulNet = emul;
     this->log = log;
     this->par = params;
@@ -206,11 +207,6 @@ MP1Node::MP1Node(Member *member, Params *params,
     tasks.push_back(unique_ptr<Task>(new GossipDisseminator(this)));
     tasks.push_back(unique_ptr<Task>(new HearbeatService(this)));
 }
-
-/**
- * Destructor of the MP1Node class
- */
-MP1Node::~MP1Node() {}
 
 /**
  * This function bootstraps the node
@@ -320,7 +316,7 @@ void MP1Node::drainIngressQueue() {
     while (!memberNode->mp1q.empty()) {
         auto msg = memberNode->mp1q.front();
         memberNode->mp1q.pop();
-        handleRequest((void *)memberNode, (char *)msg.elt, msg.size);
+        handleRequest((char *)msg.elt, msg.size);
         free(msg.elt);
     }
 }
@@ -329,7 +325,7 @@ void MP1Node::drainIngressQueue() {
 /**
  * Message handler for different message types
  */
-int MP1Node::handleRequest(void *env, char *data, int size) {
+int MP1Node::handleRequest(char *data, int size) {
     if ((size_t)size < sizeof(Request))
         return EFAIL;
 
@@ -418,8 +414,8 @@ void MP1Node::handleMembersData(char *buff, uint64_t count) {
 }
 
 /**
-*
-*/
+ *
+ */
 void MP1Node::updateMemberEntry(MemberListEntry entry) {
     auto hash = addressHash(entry.id, entry.port);
     auto activePos = activeMembers.find(hash);
@@ -495,7 +491,7 @@ int64_t MP1Node::getTimestamp() {
 }
 
 Member* MP1Node::getMemberNode() {
-    return memberNode;
+    return memberNode.get();
 }
 
 MP1Node::MembersList& MP1Node::getMembersList() {
