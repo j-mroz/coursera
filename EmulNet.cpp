@@ -72,7 +72,7 @@ EmulNet::~EmulNet() {}
 void *EmulNet::ENinit(Address *myaddr, short port) {
 	// Initialize data structures for this member
 	*(int *)(myaddr->addr) = emulnet.nextid++;
-    *(short *)(&myaddr->addr[4]) = 0;
+	*(short *)(&myaddr->addr[4]) = 0;
 	return myaddr;
 }
 
@@ -142,26 +142,19 @@ int EmulNet::ENsend(Address *myaddr, Address *toaddr, string data) {
  * 0
  */
 int EmulNet::ENrecv(Address *myaddr, int (* enq)(void *, char *, int), struct timeval *t, int times, void *queue){
-	// times is always assumed to be 1
-	int i;
-	char* tmp;
-	int sz;
-	en_msg *emsg;
-
-	for( i = emulnet.currbuffsize - 1; i >= 0; i-- ) {
-		emsg = emulnet.buff[i];
+	for(int i = emulnet.currbuffsize - 1; i >= 0; i-- ) {
+		en_msg *emsg = emulnet.buff[i];
 
 		if ( 0 == strcmp(emsg->to.addr, myaddr->addr) ) {
-			sz = emsg->size;
-			tmp = (char *) malloc(sz * sizeof(char));
-			memcpy(tmp, (char *)(emsg+1), sz);
-
+			// instead of allocing reuse buffer that was going to
+			// be deleted anyway, so simple ...
+			int msize = emsg->size;
+			memmove(emsg, emsg+1, msize);
+			char *msg = (char *)emsg;
 			emulnet.buff[i] = emulnet.buff[emulnet.currbuffsize-1];
 			emulnet.currbuffsize--;
 
-			(*enq)(queue, (char *)tmp, sz);
-
-			free(emsg);
+			(*enq)(queue, msg, msize);
 
 			int dst = *(int *)(myaddr->addr);
 			int time = par->getcurrtime();

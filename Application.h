@@ -51,7 +51,7 @@ static const char alphanum[] =
  *
  * DESCRIPTION: Application layer of the distributed system
  */
-class Application{
+class Application {
 private:
 	// Address for introduction to the group
 	// Coordinator Node

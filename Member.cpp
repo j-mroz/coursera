@@ -11,20 +11,6 @@
  */
 q_elt::q_elt(void *elt, int size): elt(elt), size(size) {}
 
-/**
- * Copy constructor
- */
-Address::Address(const Address &anotherAddress) {
-	memcpy(&addr, &anotherAddress.addr, sizeof(addr));
-}
-
-/**
- * Assignment operator overloading
- */
-Address& Address::operator =(const Address& anotherAddress) {
-    memcpy(&addr, &anotherAddress.addr, sizeof(addr));
-	return *this;
-}
 
 /**
  * Compare two Address objects

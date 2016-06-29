@@ -8,7 +8,7 @@
 #define MEMBER_H_
 
 #include "stdincludes.h"
-
+#include <arpa/inet.h>
 /**
  * CLASS NAME: q_elt
  *
@@ -28,29 +28,43 @@ public:
  */
 class Address {
 public:
-	char addr[6];
-	Address() {}
-	// Copy constructor
-	Address(const Address &anotherAddress);
-	 // Overloaded = operator
-	Address& operator =(const Address &anotherAddress);
-	bool operator ==(const Address &anotherAddress);
-	Address(string address) {
+	char addr[6] = {0, 0, 0, 0, 0, 0};
+
+	Address()                  = default;
+	Address(const Address&)    = default;
+	Address(const string &address) {
 		size_t pos = address.find(":");
-		int id = stoi(address.substr(0, pos));
-		short port = (short)stoi(address.substr(pos + 1, address.size()-pos-1));
-		memcpy(&addr[0], &id, sizeof(int));
-		memcpy(&addr[4], &port, sizeof(short));
+		uint32_t id   = (uint32_t)stoul(address.substr(0, pos));
+		uint16_t port = (uint16_t)stoul(address.substr(pos + 1));
+		memcpy(&addr[0], (char *)&id, sizeof(uint32_t));
+		memcpy(&addr[4], (char *)&port, sizeof(uint16_t));
 	}
+	Address(int32_t id, int16_t port) {
+		memcpy(&addr[0], (char *)&id, sizeof(uint32_t));
+		memcpy(&addr[4], (char *)&port, sizeof(uint16_t));
+	}
+	Address& operator=(const Address&) = default;
+	bool operator==(const Address &);
+
 	string getAddress() {
-		int id = 0;
-		short port;
-		memcpy(&id, &addr[0], sizeof(int));
-		memcpy(&port, &addr[4], sizeof(short));
-		return to_string(id) + ":" + to_string(port);
+		return to_string(getIp()) + ":" + to_string(getPort());
 	}
-	void init() {
-		memset(&addr, 0, sizeof(addr));
+
+	string str() {
+		return string(inet_ntoa(in_addr{getIp()})) + ":" + to_string(getPort());
+	}
+
+
+	uint16_t getPort() {
+		uint16_t port;
+		memcpy(&port, addr + 4, sizeof(uint16_t));
+		return port;
+	}
+
+	uint32_t getIp() {
+		uint32_t ip;
+		memcpy(&ip, addr, sizeof(uint32_t));
+		return ip;
 	}
 };
 

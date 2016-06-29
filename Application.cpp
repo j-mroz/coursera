@@ -5,6 +5,8 @@
  **********************************/
 
 #include "Application.h"
+#include <memory>
+using std::make_shared;
 
 void handler(int sig) {
 	void *array[10];
@@ -45,12 +47,10 @@ int main(int argc, char *argv[]) {
  * Constructor of the Application class
  */
 Application::Application(char *infile) {
-	int i;
 	srand (time(NULL));
 
 	par = unique_ptr<Params>(new Params);
 	par->setparams(infile);
-
 	log = unique_ptr<Log>(new Log(par.get()));
 	en = unique_ptr<EmulNet>(new EmulNet(par.get()));
     en1 = unique_ptr<EmulNet>(new EmulNet(par.get()));
@@ -59,24 +59,23 @@ Application::Application(char *infile) {
 	/*
 	 * Init all nodes
 	 */
-	for( i = 0; i < par->EN_GPSZ; i++ ) {
-		Member *memberNode = new Member;
-		memberNode->inited = false;
-		Address *addressOfMemberNode = new Address();
-		Address joinaddr;
-		joinaddr = getjoinaddr();
-		addressOfMemberNode = (Address *) en->ENinit(addressOfMemberNode, par->PORTNUM);
-        mp1[i] = unique_ptr<MP1Node>(new MP1Node(memberNode, par.get(),
-                                                en.get(),
-                                                log.get(),
-                                                addressOfMemberNode));
-        mp2[i] = unique_ptr<MP2Node>(new MP2Node(memberNode, par.get(),
-                                                en1.get(),
-                                                log.get(),
-                                                addressOfMemberNode));
-		log->LOG(&(mp1[i]->getMemberNode()->addr), "APP");
-		log->LOG(&(mp2[i]->getMemberNode()->addr), "APP MP2");
-		delete addressOfMemberNode;
+     for (int i = 0; i < par->EN_GPSZ; i++) {
+        auto memberNode = make_shared<Member>();
+
+        Address addressOfMemberNode;
+        en->ENinit(&addressOfMemberNode, par->PORTNUM);
+        mp1[i] = unique_ptr<MP1Node>(new MP1Node(memberNode,
+                                                 par.get(),
+                                                 en.get(),
+                                                 log.get(),
+                                                 addressOfMemberNode));
+        mp2[i] = unique_ptr<MP2Node>(new MP2Node(memberNode,
+                                                 par.get(),
+                                                 en1.get(),
+                                                 log.get(),
+                                                 &addressOfMemberNode));
+        log->LOG(&(mp1[i]->getMemberNode()->addr), "APP");
+        log->LOG(&(mp2[i]->getMemberNode()->addr), "APP MP2");
 	}
 }
 
@@ -369,7 +368,6 @@ void Application::fail() {
 Address Application::getjoinaddr(void){
 	//trace.funcEntry("Application::getjoinaddr");
     Address joinaddr;
-    joinaddr.init();
     *(int *)(&(joinaddr.addr))=1;
     *(short *)(&(joinaddr.addr[4]))=0;
     //trace.funcExit("Application::getjoinaddr", SUCCESS);
