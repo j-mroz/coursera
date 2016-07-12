@@ -19,60 +19,21 @@
 #include "Message.h"
 #include "Queue.h"
 
+
 #include <memory>
 
 using std::unique_ptr;
 using NodeList = vector<Node>;
 
+class DSService;
 
-// proto::version::req_type::transaction::addr::?key::?value::?success
-// transID::fromAddr::CREATE::key::value::ReplicaType
-// transID::fromAddr::READ::key
-// transID::fromAddr::UPDATE::key::value::ReplicaType
-// transID::fromAddr::DELETE::key
-// transID::fromAddr::REPLY::sucess
-// transID::fromAddr::READREPLY::value
-// Header = proto::version::req_type::transaction::addr
-// Payload =
-
-#define _packed_ __attribute__((packed, aligned(2)))
-
-
-namespace dsproto {
-
-    enum MsgType {CREATE, READ, UPDATE, DELETE, REPLY, READREPLY};
-
-    struct _packed_ Header {
-        uint8_t  proto;
-        uint8_t  version;
-        uint8_t  msgType;
-        uint8_t  flags;
-        uint32_t transaction;
-        uint32_t id;
-        uint16_t port;
-        uint16_t crc;
-        uint32_t payloadSize;
-    };
-
-    namespace flags {
-        static const uint8_t KEY     = 0b10000000;
-        static const uint8_t VAL     = 0b01000000;
-        static const uint8_t STATUS  = 0b00100000;
-        static const uint8_t REPLICA = 0b00010000;
-    }
-
-    static const uint8_t magic   = 0xDB;
-    static const uint8_t version = 0x01;
-}
-
-
-class StoreNodeImpl;
-
-class StoreNode {
+class DSNode {
 public:
-    StoreNode(shared_ptr<Member>, Params*, EmulNet*, Log*, Address*);
-    StoreNode(StoreNodeImpl* impl);
-    virtual ~StoreNode();
+    DSNode(shared_ptr<Member>, Params*, EmulNet*, Log*, Address*);
+    DSNode(DSService* impl);
+    DSNode()        = delete;
+    DSNode(DSNode&) = delete;
+    virtual ~DSNode();
 
     // Client side CRUD APIs
     void        clientCreate(string key, string value);
@@ -88,9 +49,9 @@ public:
     Member*     getMemberNode();
 
 private:
-    unique_ptr<StoreNodeImpl> impl;
+    unique_ptr<DSService> impl;
 };
 
-using MP2Node = StoreNode;
+using MP2Node = DSNode;
 
 #endif /* MP2NODE_H_ */

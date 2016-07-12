@@ -14,14 +14,6 @@ static Aligned getUnaligned(void *ptr) {
     return result;
 }
 
-static Address toAddress(int32_t id, int16_t port) {
-    Address result;
-    memset(&result, 0, sizeof(Address));
-    memcpy(&result.addr[0], (char *)&id, sizeof(char)*4);
-    memcpy(&result.addr[4], (char *)&port, sizeof(char)*2);
-    return result;
-}
-
 static char* appendMemberData(char *buff, const MemberListEntry &entry) {
     auto data = MemberData {
         entry.id, entry.port, entry.heartbeat
@@ -45,7 +37,7 @@ protected:
         node = n;
     }
 
-    virtual ~GossipBase() { };
+    virtual ~GossipBase() = default;
 
     vector<size_t> pickGossipGroup() {
         auto membersCount = node->getMembersList().size();
@@ -65,7 +57,7 @@ protected:
         auto gossipPeers = pickGossipGroup();
         for (auto peerIndex : gossipPeers) {
             auto &member = node->getMembersList()[peerIndex];
-            auto memberAddr = toAddress(member.id, member.port);
+            auto memberAddr = Address(member.id, member.port);
             node->send(move(memberAddr), (char *)msg.data(), msg.size());
         }
     }
@@ -79,7 +71,7 @@ class GossipDisseminator : public GossipBase, public Task {
 
 public:
     GossipDisseminator(MP1Node *node) : GossipBase(node), Task() { }
-    virtual ~GossipDisseminator() { }
+    virtual ~GossipDisseminator() = default;
 
     void run() {
         // Allocate buffer
@@ -116,7 +108,7 @@ public:
         msgBuff.resize(sizeof(Heartbeat));
     }
 
-    virtual ~HearbeatService() { }
+    virtual ~HearbeatService() = default;
 
     void run() {
         // Prepare
@@ -143,7 +135,7 @@ class FailureDetector : public Task {
 
 public:
     FailureDetector(MP1Node *node) : Task(), node(node) { }
-    virtual ~FailureDetector() { }
+    virtual ~FailureDetector() = default;
 
     void run() {
         auto &members = node->getMembersList();
@@ -179,8 +171,8 @@ public:
         auto &failed = node->getFailedMembers();
         for (auto memberPos = failed.begin(); memberPos != failed.end(); ) {
             if (isRemovable(memberPos->second)) {
-                node->logNodeRemove(toAddress(memberPos->second.id,
-                                              memberPos->second.port));
+                node->logNodeRemove(Address(memberPos->second.id,
+                                            memberPos->second.port));
                 memberPos = failed.erase(memberPos);
             } else {
                 ++memberPos;
@@ -196,10 +188,10 @@ public:
  */
 MP1Node::MP1Node(shared_ptr<Member> member, Params *params,
                 EmulNet *emul, Log *log, Address address)
-        : memberNode(member)
+        : memberNode(member), transport(emul, &member->mp1q, address)
 {
     this->memberNode->addr = move(address);
-    this->emulNet = emul;
+    // this->emulNet = emul;
     this->log = log;
     this->par = params;
 
@@ -289,8 +281,7 @@ int MP1Node::recvLoop() {
     if (memberNode->bFailed)
         return false;
 
-    return emulNet->ENrecv(&memberNode->addr, queueIngress,
-                           nullptr, 1, &memberNode->mp1q);
+    return transport.drain();
 }
 
 /**
@@ -313,11 +304,10 @@ void MP1Node::nodeLoop() {
  * Check messages in the queue and call the respective message handler
  */
 void MP1Node::drainIngressQueue() {
-    while (!memberNode->mp1q.empty()) {
-        auto msg = memberNode->mp1q.front();
-        memberNode->mp1q.pop();
-        handleRequest((char *)msg.elt, msg.size);
-        free(msg.elt);
+    while (transport.pollnb()) {
+        auto buf = transport.recieve();
+        handleRequest((char *)buf.data, buf.size);
+        free(buf.data);
     }
 }
 
@@ -376,7 +366,7 @@ void MP1Node::handleJoinRequest(void *rawReq, size_t size) {
         offset = appendMemberData(offset, entry);
 
     auto req = getUnaligned<JoinRequest>(rawReq);
-    send(toAddress(req.id, req.port), buff.data(), buff.size());
+    send(Address(req.id, req.port), buff.data(), buff.size());
 
     updateMemberEntry({req.id, req.port, req.heartbeat, getTimestamp()});
 }
@@ -433,7 +423,7 @@ void MP1Node::updateMemberEntry(MemberListEntry entry) {
     } else if (failedPos == failedMembers.end()) {
         activeMembers[hash] = move(entry);
         memberNode->memberList.push_back(move(entry));
-        logNodeAdd(toAddress(entry.id, entry.port));
+        logNodeAdd(Address(entry.id, entry.port));
     }
 }
 
@@ -470,7 +460,7 @@ void MP1Node::runTasks() {
  * Returns the Address of the coordinator
  */
 Address MP1Node::getJoinAddress() {
-    return toAddress(1, 0);
+    return Address(1, 0);
 }
 
 int32_t MP1Node::getId() {
@@ -515,7 +505,7 @@ MP1Node::MembersMap& MP1Node::getFailedMembers() {
 }
 
 int MP1Node::send(Address addr, char *data, size_t len) {
-    return emulNet->ENsend(&memberNode->addr, &addr, data, len);
+        return transport.send(addr, data, len);
 }
 
 void MP1Node::logNode(const char *fmt, ...) {

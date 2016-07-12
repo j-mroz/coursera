@@ -83,7 +83,7 @@ def submitSolution(email_address, password, submissions):
           },
           partIds[2]: {
               "output": submissions[2]
-          }
+          },
           partIds[3]: {
               "output": submissions[3]
           }

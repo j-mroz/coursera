@@ -81,7 +81,7 @@ bool HashTable::update(string key, string newValue) {
  * false on FAILURE
  */
 bool HashTable::deleteKey(string key) {
-	uint eraseCount = 0;
+	size_t eraseCount = 0;
 
 	if (read(key).empty()) {
 		// Key not found
@@ -141,4 +141,3 @@ void HashTable::clear() {
 unsigned long HashTable::count(string key) {
 	return (unsigned long) hashTable.count(key);
 }
-

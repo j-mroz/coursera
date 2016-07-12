@@ -46,22 +46,22 @@ public:
 	Address& operator=(const Address&) = default;
 	bool operator==(const Address &);
 
-	string getAddress() {
+	string getAddress() const {
 		return to_string(getIp()) + ":" + to_string(getPort());
 	}
 
-	string str() {
+	string str() const {
 		return string(inet_ntoa(in_addr{getIp()})) + ":" + to_string(getPort());
 	}
 
 
-	uint16_t getPort() {
+	uint16_t getPort() const {
 		uint16_t port;
 		memcpy(&port, addr + 4, sizeof(uint16_t));
 		return port;
 	}
 
-	uint32_t getIp() {
+	uint32_t getIp() const {
 		uint32_t ip;
 		memcpy(&ip, addr, sizeof(uint32_t));
 		return ip;

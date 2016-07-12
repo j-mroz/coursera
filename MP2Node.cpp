@@ -1,228 +1,208 @@
 #include "MP2Node.h"
 #include "Transport.h"
+#include <algorithm>
 #include <utility>
 
 
 namespace dsproto {
 
-class Message {
-public:
-    using Header = dsproto::Header;
-
-    Message() = default;
-    Message(uint8_t type, Address addr) {
-        this->type = type;
-        this->status = 0;
-        this->replicaType = 0;
-        this->transaction = 0;
-        this->address = addr;
-    }
-
-    void setKeyValue(string key, string val) {
-        this->key = move(key);
-        this->value = move(val);
-    }
-
-    void setTransaction(uint32_t transaction) {
-        this->transaction = transaction;
-    }
-
-    Address getAddress() {
-        return address;
-    }
-
-    string str() {
-        static const char* typeRepr[] = {
-            "CREATE", "READ", "UPDATE", "DELETE", "REPLY", "READREPLY"
-        };
-        auto append = [](string &lhs, const string &val) {
-            lhs.append(val);
-            lhs.append("::");
-        };
-
-        string repr;
-        repr.reserve(200);
-        append(repr, to_string(transaction));
-        append(repr, address.str());
-        append(repr, typeRepr[type]);
-        if (key.size() > 0)
-            append(repr, key);
-        if (key.size() > 0 and value.size() > 0)
-            append(repr, value);
-
-        return repr;
-    }
-
-    vector<char> serialize() {
-        vector<char> msgbuff;
-
-        auto headerSize = sizeof(dsproto::Header);
-        auto keySize = (uint32_t)key.size() + 1;
-        auto valSize = (uint32_t)value.size() + 1;
-        auto payloadSize = (uint32_t)sizeof(keySize) + keySize +
-                           (uint32_t)sizeof(valSize) + valSize;
-        msgbuff.resize(headerSize + payloadSize + 1, 0);
-
-        bool addKey = keySize > 1;
-        bool addVal = addKey && (valSize > 1);
-        bool addStatus = false;
-        bool addReplicaType = false;
-
-        uint8_t flags =
-            (addKey         ? dsproto::flags::KEY       : 0u) |
-            (addVal         ? dsproto::flags::VAL       : 0u) |
-            (addStatus      ? dsproto::flags::STATUS    : 0u) |
-            (addReplicaType ? dsproto::flags::REPLICA   : 0u);
-
-        auto *header = (dsproto::Header *)msgbuff.data();
-        *header = dsproto::Header {
-            dsproto::magic,
-            dsproto::version,
-            type,
-            flags,
-            transaction,
-            address.getIp(),
-            address.getPort(),
-            0,
-            payloadSize
-        };
-
-        auto *offset = msgbuff.data() + sizeof(dsproto::Header);
-        auto addStringToken = [&](const string &val) {
-            auto valSize = (uint32_t)val.size() + 1;
-            memcpy(offset, (char *)&valSize, sizeof(valSize));
-            memcpy(offset + sizeof(valSize), val.data(), valSize);
-            offset += sizeof(valSize) + valSize;
-        };
-
-        if (addKey)
-            addStringToken(key);
-        if (addVal)
-            addStringToken(value);
-
-        return msgbuff;
-    }
-
-    static Message deserialize(char *data, size_t size) {
-        dsproto::Header header;
-        memcpy((char *)&header, data, sizeof(Header));
-
-        auto msg =  Message {
-            header.msgType, Address(header.id, header.port)
-        };
-        msg.transaction = header.transaction;
-
-        auto hasKey     = !!(header.flags & dsproto::flags::KEY);
-        auto hasValue   = !!(header.flags & dsproto::flags::VAL);
-        auto hasStatus  = !!(header.flags & dsproto::flags::STATUS);
-        auto hasReplica = !!(header.flags & dsproto::flags::REPLICA);
-
-
-        auto *offset = data + sizeof(header);
-        auto nextStringToken = [&](string &val) {
-            uint32_t valSize;
-            assert(offset - data <= size);
-            memcpy(&valSize, offset, sizeof(valSize));
-            assert(offset - data + valSize <= size);
-            val += (offset + sizeof(valSize));
-            offset += sizeof(valSize) + valSize;
-        };
-
-        if (hasKey) {
-            nextStringToken(msg.key);
-        }
-        if (hasValue) {
-            nextStringToken(msg.value);
-        }
-
-        return msg;
-    }
-
-private:
-    uint8_t type;
-    uint8_t status;
-    uint8_t replicaType;
-    uint32_t transaction;
-    string  key;
-    string  value;
-    Address address;
-
-};
-
 class Protocol {
     using Msg = Message;
 public:
-    Protocol(shared_ptr<net::Transport> net) {
-        net_ = net;
+    Protocol(shared_ptr<net::Transport> net) : transport(net) {
+        addr = transport->getAddress();
     }
 
     void send(Address remote, Msg &msg) {
         auto msgbuff = msg.serialize();
-        if (auto net = net_.lock()) {
-            net->send(remote, msgbuff.data(), msgbuff.size());
-        }
+        transport->send(remote, msgbuff.data(), msgbuff.size());
     }
 
-    Msg recieve() {
-        Msg msg;
-        if (auto net = net_.lock()) {
-            auto buf = net->recieve();
-            msg = Msg::deserialize((char *)buf.data, buf.size);
-            free(buf.data);
-        }
-        return msg;
-    }
-
-    Msg buildCreate(string &&key, string &&value) {
-        Address addr;
-        if (auto net = net_.lock())
-            addr = net->getAddress();
-
+    void sendCreate(Address remote, string &&key, string &&value) {
         auto msg = Msg { dsproto::CREATE, addr };
         msg.setKeyValue(key, value);
         msg.setTransaction(++transaction);
+        send(remote, msg);
+    }
 
+    Msg recieve() {
+        auto buf = transport->recieve();
+        auto msg = Msg::deserialize((char *)buf.data, buf.size);
+        free(buf.data);
         return msg;
     }
 
+    Address getLocalAddres() {
+        return addr;
+    }
+
+    shared_ptr<net::Transport> getTransport() {
+        return transport;
+    }
 
 private:
-    weak_ptr<net::Transport> net_;
-    int32_t transaction = 0;
+    Address                     addr;
+    shared_ptr<net::Transport>  transport;
+    int32_t                     transaction = 0;
 };
 
 }
 
-class Coordinator {
-public:
+static int64_t addressHash(int32_t id, int16_t port) {
+    return ((int64_t)id << 32) + port;
+}
 
-    Coordinator(dsproto::Protocol *proto) {
-        this->proto = proto;
+class RingPos {
+public:
+    RingPos() = default;
+
+    RingPos(const Address &addr) {
+        hash = (uint64_t)addressHash(addr.getIp(), addr.getPort());
+        hash = (hash * 2654435761ul) >> 32;
+        hash %= (RING_SIZE);
     }
 
-    void create(string &&key, string &&value) {
-        auto msg = proto->buildCreate(move(key), move(value));
-        //TODO self send, just for now
-        proto->send(msg.getAddress(), msg);
-        printf("send: %s\n", msg.str().data());
+    RingPos(const string &key) {
+        static std::hash<string> hashString;
+        hash = (hashString(key) * 2654435761ul) >> 32;
+        hash %= (RING_SIZE);
+    }
+
+    uint64_t getHash() const {
+        return hash;
     }
 
 private:
-    dsproto::Protocol *proto;
+    uint64_t hash;
 };
 
-class StoreNodeImpl {
-    friend class StoreNode;
-
+class RingClusterInfo {
 public:
-    StoreNodeImpl(shared_ptr<Member> member,
-                  shared_ptr<net::Transport> transport, Log *log)
-            : member(member), transport(transport), proto(transport),
-                coordinator(&proto), log(log) {
+    using MembersList = vector<MemberListEntry>;
+
+    RingClusterInfo(shared_ptr<Member> member) {
+        this->member = member;
+    }
+
+    MembersList& getMembersList() {
+        return member->memberList;
+    }
+
+private:
+    shared_ptr<Member> member;
+};
+
+
+class ReplicationStrategy {
+public:
+    using MembersList = vector<MemberListEntry>;
+
+    ReplicationStrategy()          = default;
+    virtual ~ReplicationStrategy() = default;
+    virtual MembersList getNaturalNodes(const string&) = 0;
+};
+
+template<typename ClusterInfo>
+class SimpleReplicationStrategy : public ReplicationStrategy {
+public:
+    SimpleReplicationStrategy(unique_ptr<ClusterInfo> &&clusterInfo,
+                              size_t replicationFactor) {
+        this->replicationFactor = replicationFactor;
+        this->clusterInfo = move(clusterInfo);
+    }
+    virtual ~SimpleReplicationStrategy() = default;
+
+    MembersList getNaturalNodes(const string &key) override {
+        using OrderedMemberIndex = tuple<RingPos, size_t>;
+        enum OrderedMemberIndexFields { RingPosIdx, ListPosIdx };
+        auto &members = clusterInfo->getMembersList();
+
+        auto orderedMembers = vector<OrderedMemberIndex>(members.size());
+        for (auto entryIdx = 0ul; entryIdx < members.size(); ++entryIdx) {
+            auto addr = Address(members[entryIdx].id, members[entryIdx].port);
+            orderedMembers[entryIdx] = make_tuple(RingPos(addr), entryIdx);
+        }
+
+        auto compareMembers = [](const OrderedMemberIndex &l,
+                                 const OrderedMemberIndex &r) {
+            return get<RingPosIdx>(l).getHash() < get<RingPosIdx>(r).getHash();
+        };
+
+        auto keyRingPos = make_tuple(RingPos(key), 0);
+        sort(orderedMembers.begin(), orderedMembers.end(), compareMembers);
+        auto startNode = lower_bound(orderedMembers.begin(), orderedMembers.end(),
+                                     keyRingPos, compareMembers);
+
+        auto naturalNodes = MembersList();
+        naturalNodes.reserve(replicationFactor);
+        auto node = startNode;
+        do {
+            if (node == orderedMembers.end())
+                node = orderedMembers.begin();
+            naturalNodes.push_back(members[get<ListPosIdx>(*node)]);
+        } while (naturalNodes.size() < replicationFactor && ++node != startNode);
+
+        return naturalNodes;
+    }
+
+private:
+    size_t                  replicationFactor;
+    unique_ptr<ClusterInfo> clusterInfo;
+};
+
+class Coordinator {
+public:
+    Coordinator(shared_ptr<dsproto::Protocol> proto,
+                shared_ptr<ReplicationStrategy> replictor) {
+        this->proto = proto;
+        this->replictor = replictor;
     }
 
     void create(string &&key, string &&value) {
-        coordinator.create(move(key), move(value));
+        auto nodes = replictor->getNaturalNodes(key);
+        if (nodes.size() == 0)
+            return;
+
+        auto remote = Address(nodes[0].id, nodes[0].port);
+        if (remote == proto->getLocalAddres()) {
+            printf("self send!, returning\n");
+            return;
+        }
+        proto->sendCreate(remote, move(key), move(value));
+    }
+
+private:
+    shared_ptr<dsproto::Protocol>   proto;
+    shared_ptr<ReplicationStrategy> replictor;
+};
+
+class DSService {
+    friend class DSNode;
+    // using ReplicationStrategyPtr = shared_ptr<ReplicationStrategy<RingClusterInfo>>;
+    // using CoordinatorPtr = unique_ptr<Coordinator>;
+
+public:
+    DSService(shared_ptr<Member> member, shared_ptr<dsproto::Protocol> proto,
+              Log *log) {
+        this->member = member;
+        this->proto = proto;
+        transport = proto->getTransport();
+
+        using MyReplicationStrategy = SimpleReplicationStrategy<RingClusterInfo>;
+        static const size_t REPLICATION_FACTOR = 3;
+
+        auto clusterInfo = unique_ptr<RingClusterInfo>(
+                new RingClusterInfo(member));
+        replicator = make_shared<MyReplicationStrategy>(
+                move(clusterInfo), REPLICATION_FACTOR);
+        coordinator = unique_ptr<Coordinator>(
+                new Coordinator(proto, replicator));
+
+        log = log;
+    }
+
+    void create(string &&key, string &&value) {
+        coordinator->create(move(key), move(value));
     }
 
     void read(const string &key) {
@@ -240,7 +220,7 @@ public:
 
     bool drainIngressQueue() {
         while (transport->pollnb()) {
-            auto msg = proto.recieve();
+            auto msg = proto->recieve();
             printf("recv: %s\n", msg.str().data());
         }
         return true;
@@ -248,69 +228,68 @@ public:
 
 
 private:
-    shared_ptr<Member>          member;
-    shared_ptr<net::Transport>  transport;
-    dsproto::Protocol           proto;
-    Coordinator                 coordinator;
-    Log                         *log;
+    shared_ptr<Member>              member;
+    shared_ptr<dsproto::Protocol>   proto;
+    shared_ptr<net::Transport>      transport;
+    shared_ptr<ReplicationStrategy> replicator;
+    unique_ptr<Coordinator>         coordinator;
+    Log                             *log;
 };
 
 
 /**
  * Constructs default implementation
  */
-StoreNode::StoreNode(shared_ptr<Member> member, Params*,
-                     EmulNet *emulNet, Log *log, Address *address)
-        : StoreNode(new StoreNodeImpl{
-            member,
-            make_shared<net::Transport>(emulNet, &member->mp2q, *address),
-            log
-        }) {
+DSNode::DSNode(shared_ptr<Member> member, Params*,
+              EmulNet *emulNet, Log *log, Address *local) {
+    auto transport = make_shared<net::Transport>(emulNet, &member->mp2q, *local);
+    auto proto = make_shared<dsproto::Protocol>(transport);
+    this->impl = unique_ptr<DSService>(new DSService(member, proto, log));
 }
 
 /**
  * Dependency injection constructor
  */
-StoreNode::StoreNode(StoreNodeImpl* impl) {
-    this->impl = unique_ptr<StoreNodeImpl>(impl);
+DSNode::DSNode(DSService* impl) {
+    this->impl = unique_ptr<DSService>(impl);
 }
 
-StoreNode::~StoreNode() {
+DSNode::~DSNode() {
 }
 
 /* Store Node Pimpl dispatchers */
-void StoreNode::clientCreate(string key, string value) {
+void DSNode::clientCreate(string key, string value) {
     return impl->create(move(key), move(value));
 }
 
-void StoreNode::clientRead(const string &key) {
+void DSNode::clientRead(const string &key) {
     return impl->read(key);
 }
 
-void StoreNode::clientUpdate(const string &key, const string &value) {
+void DSNode::clientUpdate(const string &key, const string &value) {
     return impl->update(key, value);
 }
 
-void StoreNode::clientDelete(const string &key) {
+void DSNode::clientDelete(const string &key) {
     return impl->remove(key);
 }
 
-bool StoreNode::recvLoop() {
+bool DSNode::recvLoop() {
     return impl->drainTransportLayer();
 }
 
-void StoreNode::checkMessages() {
+void DSNode::checkMessages() {
     impl->drainIngressQueue();
 }
 
-vector<Node> StoreNode::findNodes(const string &key) {
+vector<Node> DSNode::findNodes(const string &key) {
 	return vector<Node>();
 }
 
-void StoreNode::updateRing() {
+void DSNode::updateRing() {
 }
 
-Member* StoreNode::getMemberNode() {
+Member* DSNode::getMemberNode() {
     return impl->member.get();
 }
 /* Store Node Pimpl dispatchers end */

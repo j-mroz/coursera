@@ -12,6 +12,7 @@
 #include "Member.h"
 #include "EmulNet.h"
 #include "Queue.h"
+#include "Transport.h"
 
 #include <functional>
 #include <memory>
@@ -138,10 +139,11 @@ private:
 private:
     using TasksList = vector<unique_ptr<Task>>;
 
-    EmulNet             *emulNet;
+    // EmulNet             *emulNet;
     Log                 *log;
     Params              *par;
     shared_ptr<Member>  memberNode;
+    net::Transport      transport;
     MembersMap          activeMembers;
     MembersMap          failedMembers;
     TasksList           tasks;
