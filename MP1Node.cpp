@@ -160,6 +160,7 @@ public:
                 activeMembers.erase(hash);
             }
         }
+        // Erase from the main list
         members.erase(remove_if(members.begin(), members.end(), hasFailed),
                       members.end());
 
@@ -178,6 +179,9 @@ public:
                 ++memberPos;
             }
         }
+        // // Erase from the main list
+        // members.erase(remove_if(members.begin(), members.end(), isRemovable),
+        //               members.end());
     }
 };
 
@@ -247,6 +251,7 @@ int MP1Node::join(Address *joinaddr) {
         // I am the group booter (first process to join the group).
         logNode("Starting up group...");
         memberNode->inGroup = true;
+        memberNode->inited = true;
     } else {
         JoinRequest req {
             JOINREQ,
@@ -381,6 +386,7 @@ void MP1Node::handleJoinResponse(void *raw, size_t size) {
     updateMemberEntry({rsp.id, rsp.port, rsp.heartbeat, getTimestamp()});
     handleMembersData(payload, rsp.membersCount);
     memberNode->inGroup = true;
+    memberNode->inited = true;
 }
 
 /**

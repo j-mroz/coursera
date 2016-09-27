@@ -11,7 +11,9 @@ using std::string;
 
 namespace dsproto {
 
-enum MsgType { CREATE, READ, UPDATE, DELETE, REPLY, READREPLY };
+enum MsgType { CREATE, READ, UPDATE, DELETE, REPLY, CREATE_RSP, READ_RSP, DELETE_RSP, UPDATE_RSP, VIEW_CHANGE };
+
+enum ReqStatus { OK, FAIL };
 
 struct _packed_ Header {
     uint8_t  proto;
@@ -32,31 +34,50 @@ namespace flags {
     static const uint8_t REPLICA = 0b00010000;
 }
 
-static const uint8_t magic   = 0xDB;
-static const uint8_t version = 0x01;
+static const uint8_t DsProto        = 0xDB;
+static const uint8_t DsProtoVersion = 0x01;
+
+static const uint8_t VsProto        = 0x3B;
+static const uint8_t VsProtoVersion = 0x01;
+
 
 
 class Message {
 public:
-    Message() = default;
+    Message() {};
     Message(uint8_t type, Address addr);
 
+    uint8_t getType() const;
+
     void setKeyValue(string key, string val);
+    void setKey(string key);
+    const string& getKey() const;
+    const string& getValue() const;
+
+    void setStatus(uint8_t status);
+    uint8_t getStatus() const;
+
     void setTransaction(uint32_t transaction);
-    Address getAddress();
-    string str();
+    uint32_t getTransaction() const;
+
+    Address getAddress() const;
+
+    string str() const;
     vector<char> serialize();
     static Message deserialize(char *data, size_t size);
 
 private:
     uint8_t  type;
-    uint8_t  status;
+    uint8_t  status = OK;
     uint8_t  replicaType;
     uint32_t transaction;
     string   key;
     string   value;
     Address  address;
 };
+
+
+
 }
 
 #endif

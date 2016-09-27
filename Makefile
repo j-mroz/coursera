@@ -7,11 +7,11 @@
 #*
 #***********************
 
-CFLAGS =  -Wall -g -std=c++11
-LDFLAGS = -g
-#CXX = /usr/local/bin/g++-6
-CXX = g++
-# CXX = clan${CXX}
+CFLAGS =  -Wall -g -std=c++11 -fsanitize=address -O  -fno-omit-frame-pointer
+LDFLAGS = -g -fsanitize=address -lasan
+CXX = /usr/local/bin/g++-6
+# CXX = g++
+# CXX = clang-3.8
 
 all: Application
 

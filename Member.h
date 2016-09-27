@@ -44,7 +44,7 @@ public:
 		memcpy(&addr[4], (char *)&port, sizeof(uint16_t));
 	}
 	Address& operator=(const Address&) = default;
-	bool operator==(const Address &);
+	bool operator==(const Address &) const;
 
 	string getAddress() const {
 		return to_string(getIp()) + ":" + to_string(getPort());

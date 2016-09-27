@@ -17,6 +17,6 @@ q_elt::q_elt(void *elt, int size): elt(elt), size(size) {}
  * Return true/non-zero if they have the same ip address and port number
  * Return false/zero if they are different
  */
-bool Address::operator ==(const Address& anotherAddress) {
+bool Address::operator ==(const Address& anotherAddress) const {
 	return !memcmp(this->addr, anotherAddress.addr, sizeof(this->addr));
 }

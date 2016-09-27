@@ -38,7 +38,7 @@ public:
     // Client side CRUD APIs
     void        clientCreate(string key, string value);
     void        clientRead  (const string &key);
-    void        clientUpdate(const string &key, const string &value);
+    void        clientUpdate(string key, string value);
     void        clientDelete(const string &key);
 
     // Emulnet and Appliction API
