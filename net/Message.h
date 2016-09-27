@@ -1,9 +1,10 @@
 #ifndef MESSAGE_H_
 #define MESSAGE_H_
 
-#include "stdincludes.h"
-#include "Member.h"
 #include <string>
+#include <vector>
+
+#include "Address.h"
 using std::string;
 
 #undef _packed_
@@ -63,7 +64,7 @@ public:
     Address getAddress() const;
 
     string str() const;
-    vector<char> serialize();
+    std::vector<char> serialize();
     static Message deserialize(char *data, size_t size);
 
 private:

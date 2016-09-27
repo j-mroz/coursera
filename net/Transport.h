@@ -1,7 +1,7 @@
 #ifndef TRANSPORT_H_
 #define TRANSPORT_H_
 
-#include "Member.h"
+#include "simulator/Member.h"
 
 #include <queue>
 using std::queue;

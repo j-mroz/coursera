@@ -446,6 +446,7 @@ void Application::deleteTest() {
 	 */
 	cout<<endl<<"Deleting "<<testKVPairs.size()/2 <<" valid keys.... ... .. . ."<<endl;
 	map<string, string>::iterator it = testKVPairs.begin();
+    // printf("Deleting %d valid keys\n", testKVPairs.size()/2);
 	for ( int i = 0; i < testKVPairs.size()/2; i++ ) {
 		it++;
 
@@ -494,7 +495,7 @@ void Application::readTest() {
 		number = findARandomNodeThatIsAlive();
 
 		// Step 1.b Do a read operation
-		cout<<endl<<"Reading a valid key.... ... .. . ."<<endl;
+		cout<<endl<<"1. Reading a valid key.... ... .. . ."<<endl;
 		log->LOG(&mp2[number]->getMemberNode()->addr, "READ OPERATION KEY: %s VALUE: %s at time: %d", it->first.c_str(), it->second.c_str(), par->getcurrtime());
 		mp2[number]->clientRead(it->first);
 	}
@@ -553,7 +554,7 @@ void Application::readTest() {
 		number = findARandomNodeThatIsAlive();
 
 		// Step 2.d Issue a read
-		cout<<endl<<"Reading a valid key.... ... .. . ."<<endl;
+		cout<<endl<<"2. Reading a valid key.... ... .. . ."<<endl;
 		log->LOG(&mp2[number]->getMemberNode()->addr, "READ OPERATION KEY: %s VALUE: %s at time: %d", it->first.c_str(), it->second.c_str(), par->getcurrtime());
 		mp2[number]->clientRead(it->first);
 

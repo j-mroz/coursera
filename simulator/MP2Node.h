@@ -16,7 +16,7 @@
 #include "HashTable.h"
 #include "Log.h"
 #include "Params.h"
-#include "Message.h"
+#include "net/Message.h"
 #include "Queue.h"
 
 

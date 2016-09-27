@@ -1,6 +1,7 @@
-#include "EmulNet.h"
+#include "simulator/EmulNet.h"
+#include "simulator/Member.h"
+#include "simulator/Queue.h"
 #include "Transport.h"
-#include "Queue.h"
 
 namespace net {
 

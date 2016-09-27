@@ -25,7 +25,7 @@
  *
  * DESCRIPTION: Functions to log messages in a debug log
  */
-class Log{
+class Log {
 private:
 	Params *par;
 	bool firstTime;

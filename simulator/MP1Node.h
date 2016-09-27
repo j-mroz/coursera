@@ -12,7 +12,7 @@
 #include "Member.h"
 #include "EmulNet.h"
 #include "Queue.h"
-#include "Transport.h"
+#include "net/Transport.h"
 
 #include <functional>
 #include <memory>

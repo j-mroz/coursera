@@ -1,5 +1,12 @@
 #include "Message.h"
 
+#include <cassert>
+#include <string>
+#include <vector>
+
+using std::vector;
+using std::to_string;
+
 namespace dsproto {
 
 Message::Message(uint8_t type, Address addr) {
