@@ -1,4 +1,4 @@
-CFLAGS =  -Wall -g -std=c++11 -fsanitize=address -O  -fno-omit-frame-pointer -I..
+CFLAGS =  -Wall -g -std=c++11 -I.. -fsanitize=address -O  -fno-omit-frame-pointer
 LDFLAGS = -g -fsanitize=address -lasan
 CXX = /usr/local/bin/g++-6
 # CXX = g++

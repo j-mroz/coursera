@@ -447,7 +447,7 @@ void Application::deleteTest() {
 	cout<<endl<<"Deleting "<<testKVPairs.size()/2 <<" valid keys.... ... .. . ."<<endl;
 	map<string, string>::iterator it = testKVPairs.begin();
     // printf("Deleting %d valid keys\n", testKVPairs.size()/2);
-	for ( int i = 0; i < testKVPairs.size()/2; i++ ) {
+	for (auto i = 0ul; i < testKVPairs.size()/2; i++ ) {
 		it++;
 
 		// Step 1.a. Find a node that is alive
@@ -611,7 +611,7 @@ void Application::readTest() {
 				exit(1);
 			}
 			if ( count == 2 ) {
-				for ( int i = 0; i < nodesToFail.size(); i++ ) {
+				for ( auto i = 0ul; i < nodesToFail.size(); i++ ) {
 					// Fail a node
 					log->LOG(&mp2[nodesToFail.at(i)]->getMemberNode()->addr, "Node failed at time=%d", par->getcurrtime());
 					mp2[nodesToFail.at(i)]->getMemberNode()->bFailed = true;
@@ -662,6 +662,9 @@ void Application::readTest() {
 		// Step 4.b Find a non - replica for this key
 		replicas.clear();
 		replicas = mp2[number]->findNodes(it->first);
+		for (auto node : replicas) {
+			std::cout << node.getAddress()->getAddress() << "\n";
+		}
 		for ( int i = 0; i < par->EN_GPSZ; i++ ) {
 			if ( !mp2[i]->getMemberNode()->bFailed ) {
 				if ( mp2[i]->getMemberNode()->addr.getAddress() != replicas.at(PRIMARY).getAddress()->getAddress() &&
@@ -672,7 +675,7 @@ void Application::readTest() {
 					mp2[i]->getMemberNode()->bFailed = true;
 					mp1[i]->getMemberNode()->bFailed = true;
 					failedOneNode = true;
-					cout<<endl<<"Failed a non-replica node"<<endl;
+					cout<<endl<<"Failed a non-replica node: " << mp2[i]->getMemberNode()->addr.getAddress() << endl;
 					break;
 				}
 			}
@@ -686,8 +689,11 @@ void Application::readTest() {
 
 		number = findARandomNodeThatIsAlive();
 
+
+
 		// Step 4.d Issue a read operation
-		cout<<endl<<"Reading a valid key.... ... .. . ."<<endl;
+		cout<<endl<<"3. Reading a valid key.... ... .. . ."<<endl;
+		cout << "using node " << mp2[number]->getMemberNode()->addr.getAddress() << " as client\n";
 		log->LOG(&mp2[number]->getMemberNode()->addr, "READ OPERATION KEY: %s VALUE: %s at time: %d", it->first.c_str(), it->second.c_str(), par->getcurrtime());
 		// This read should fail since at least quorum nodes are not alive
 		mp2[number]->clientRead(it->first);
@@ -854,7 +860,7 @@ void Application::updateTest() {
 				cout<<endl<<"Not enough replicas to fail two nodes. Exiting test case !! "<<endl;
 			}
 			if ( count == 2 ) {
-				for ( int i = 0; i < nodesToFail.size(); i++ ) {
+				for ( auto i = 0ul; i < nodesToFail.size(); i++ ) {
 					// Fail a node
 					log->LOG(&mp2[nodesToFail.at(i)]->getMemberNode()->addr, "Node failed at time=%d", par->getcurrtime());
 					mp2[nodesToFail.at(i)]->getMemberNode()->bFailed = true;

@@ -62,7 +62,7 @@ CREATE_TEST_SCORE=0
 
 if [ "${verbose}" -eq 0 ]
 then
-    make clean > /dev/null 2>&1
+    # make clean > /dev/null 2>&1
     make > /dev/null 2>&1
     if [ $? -ne "${SUCCESS}" ]
     then
@@ -71,7 +71,7 @@ then
     fi
     ./Application ./testcases/create.conf > /dev/null 2>&1
 else
-	make clean
+	# make clean
 	make
 	if [ $? -ne "${SUCCESS}" ]
 	then
@@ -80,7 +80,6 @@ else
     fi
 	./Application ./testcases/create.conf
 fi
-
 echo "TEST 1: Create 3 replicas of every key"
 
 create_count=`grep -i "${CREATE_OPERATION}" dbg.log | wc -l`
@@ -88,12 +87,12 @@ create_success_count=`grep -i "${CREATE_SUCCESS}" dbg.log | wc -l`
 expected_count=$(( ${create_count} * ${RFPLUSONE} ))
 
 if [ ${create_success_count} -ne ${expected_count} ]
-then 
+then
 	CREATE_TEST_STATUS="${FAILURE}"
 else
 	keys=`grep -i "${CREATE_OPERATION}" dbg.log | cut -d" " -f7`
 	for key in ${keys}
-	do 
+	do
 		key_create_success_count=`grep -i "${CREATE_SUCCESS}" dbg.log | grep "${key}" | wc -l`
 		if [ "${key_create_success_count}" -ne "${RFPLUSONE}" ]
 		then
@@ -103,16 +102,16 @@ else
 	done
 fi
 
-if [ "${CREATE_TEST_STATUS}" -eq "${SUCCESS}" ] 
+
+if [ "${CREATE_TEST_STATUS}" -eq "${SUCCESS}" ]
 then
-	CREATE_TEST_SCORE=3	
+	CREATE_TEST_SCORE=3
 fi
 
 # Display score
 echo "TEST 1 SCORE..................: ${CREATE_TEST_SCORE} / 3"
 # Add to grade
 GRADE=$(( ${GRADE} + ${CREATE_TEST_SCORE} ))
-
 #echo ""
 #echo "############################"
 #echo " CREATE TEST ENDS"
@@ -132,7 +131,7 @@ DELETE_TEST2_SCORE=0
 
 if [ "${verbose}" -eq 0 ]
 then
-    make clean > /dev/null 2>&1
+    # make clean > /dev/null 2>&1
     make > /dev/null 2>&1
     if [ $? -ne "${SUCCESS}" ]
     then
@@ -161,11 +160,11 @@ delete_success_count=`grep -i "${DELETE_SUCCESS}" dbg.log | wc -l`
 if [ "${delete_success_count}" -ne "${expected_count}" ]
 then
 	DELETE_TEST1_STATUS="${FAILURE}"
-else 
+else
 	keys=""
 	keys=`grep -i "${DELETE_OPERATION}" dbg.log | cut -d" " -f7`
 	for key in ${keys}
-	do 
+	do
 		if [ $key != "${INVALID_KEY}" ]
 		then
 			key_delete_success_count=`grep -i "${DELETE_SUCCESS}" dbg.log | grep "${key}" | wc -l`
@@ -177,10 +176,12 @@ else
 		fi
 	done
 fi
-
 echo "TEST 2: Attempt delete of an invalid key"
 
 delete_fail_count=`grep -i "${DELETE_FAILURE}" dbg.log | grep "${INVALID_KEY}" | wc -l`
+
+echo "${delete_success_count} eq ${expected_count}"
+
 if [ "${delete_fail_count}" -ne 4 ]
 then
 	DELETE_TEST2_STATUS="${FAILURE}"
@@ -195,6 +196,7 @@ if [ "${DELETE_TEST2_STATUS}" -eq "${SUCCESS}" ]
 then
 	DELETE_TEST2_SCORE=4
 fi
+
 
 # Display score
 echo "TEST 1 SCORE..................: ${DELETE_TEST1_SCORE} / 3"
@@ -230,7 +232,7 @@ READ_TEST5_SCORE=0
 
 if [ "${verbose}" -eq 0 ]
 then
-    make clean > /dev/null 2>&1
+    # make clean > /dev/null 2>&1
     make > /dev/null 2>&1
     if [ $? -ne "${SUCCESS}" ]
     then
@@ -239,7 +241,7 @@ then
     fi
     ./Application ./testcases/read.conf > /dev/null 2>&1
 else
-	make clean
+	# make clean
 	make
 	if [ $? -ne "${SUCCESS}" ]
 	then
@@ -298,6 +300,7 @@ read_test3_part2_success_count=0
 read_test4_success_count=0
 
 read_successes=`grep -i "${READ_SUCCESS}" dbg.log | grep ${read_op_test1_key} | grep ${read_op_test1_value} 2>/dev/null`
+
 if [ "${read_successes}" ]
 then
 	while read success
@@ -306,10 +309,10 @@ then
 		if [ "${time_of_this_success}" -ge "${read_op_test1_time}" -a "${time_of_this_success}" -lt "${read_op_test2_time}" ]
 		then
 			read_test1_success_count=`expr ${read_test1_success_count} + 1`
-		elif [ "${time_of_this_success}" -ge "${read_op_test2_time}" -a "${time_of_this_success}" -lt "${read_op_test3_part1_time}" ] 
+		elif [ "${time_of_this_success}" -ge "${read_op_test2_time}" -a "${time_of_this_success}" -lt "${read_op_test3_part1_time}" ]
 		then
 			read_test2_success_count=`expr ${read_test2_success_count} + 1`
-		elif [ "${time_of_this_success}" -ge "${read_op_test3_part2_time}" -a "${time_of_this_success}" -lt "${read_op_test4_time}" ]  
+		elif [ "${time_of_this_success}" -ge "${read_op_test3_part2_time}" -a "${time_of_this_success}" -lt "${read_op_test4_time}" ]
 		then
 			read_test3_part2_success_count=`expr ${read_test3_part2_success_count} + 1`
 		elif [ "${time_of_this_success}" -ge "${read_op_test4_time}" ]
@@ -332,7 +335,7 @@ then
 		then
 			actual_key=`echo "${fail}" | grep "${read_op_test3_part1_key}" | wc -l`
 			if [ "${actual_key}"  -eq 1 ]
-			then	
+			then
 				read_test3_part1_fail_count=`expr ${read_test3_part1_fail_count} + 1`
 			fi
 		elif [ "${time_of_this_fail}" -ge "${read_op_test5_time}" ]
@@ -438,7 +441,7 @@ UPDATE_TEST5_SCORE=0
 
 if [ "${verbose}" -eq 0 ]
 then
-    make clean > /dev/null 2>&1
+    # make clean > /dev/null 2>&1
     make > /dev/null 2>&1
     if [ $? -ne "${SUCCESS}" ]
     then
@@ -447,7 +450,7 @@ then
     fi
     ./Application ./testcases/update.conf > /dev/null 2>&1
 else
-	make clean
+	# make clean
 	make
 	if [ $? -ne "${SUCCESS}" ]
 	then
@@ -514,10 +517,10 @@ then
 		if [ "${time_of_this_success}" -ge "${update_op_test1_time}" -a "${time_of_this_success}" -lt "${update_op_test2_time}" ]
 		then
 			update_test1_success_count=`expr ${update_test1_success_count} + 1`
-		elif [ "${time_of_this_success}" -ge "${update_op_test2_time}" -a "${time_of_this_success}" -lt "${update_op_test3_part1_time}" ] 
+		elif [ "${time_of_this_success}" -ge "${update_op_test2_time}" -a "${time_of_this_success}" -lt "${update_op_test3_part1_time}" ]
 		then
 			update_test2_success_count=`expr ${update_test2_success_count} + 1`
-		elif [ "${time_of_this_success}" -ge "${update_op_test3_part2_time}" -a "${time_of_this_success}" -lt "${update_op_test4_time}" ]  
+		elif [ "${time_of_this_success}" -ge "${update_op_test3_part2_time}" -a "${time_of_this_success}" -lt "${update_op_test4_time}" ]
 		then
 			update_test3_part2_success_count=`expr ${update_test3_part2_success_count} + 1`
 		elif [ "${time_of_this_success}" -ge "${update_op_test4_time}" ]
@@ -540,7 +543,7 @@ then
 		then
 			actual_key=`echo "${fail}" | grep "${update_op_test3_part1_key}" | wc -l`
 			if [ "${actual_key}"  -eq 1 ]
-			then	
+			then
 				update_test3_part1_fail_count=`expr ${update_test3_part1_fail_count} + 1`
 			fi
 		elif [ "${time_of_this_fail}" -ge "${update_op_test5_time}" ]
@@ -626,5 +629,5 @@ GRADE=`echo ${GRADE} ${UPDATE_TEST5_SCORE} | awk '{print $1 + $2}'`
 #echo ""
 
 echo ""
-echo "TOTAL GRADE: ${GRADE} / 90" 
+echo "TOTAL GRADE: ${GRADE} / 90"
 echo ""

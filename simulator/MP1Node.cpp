@@ -274,10 +274,6 @@ int MP1Node::finishUpThisNode() {
     return ESUCCESS;
 }
 
-static int queueIngress(void *env, char *buff, int size) {
-    return Queue::enqueue((queue<q_elt> *)env, (void *)buff, size);
-}
-
 /**
  * This function receives message from the network and pushes into the queue
  * This function is called by a node to receive messages currently waiting for it

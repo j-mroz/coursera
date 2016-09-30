@@ -54,13 +54,22 @@ uint32_t Message::getTransaction() const {
     return transaction;
 }
 
+void Message::addSyncKeyValue(std::string key, std::string value) {
+    syncKeyValues.push_back(make_tuple(move(key), move(value)));
+}
+
+KeyValueList& Message::getSyncKeyValues() {
+    return syncKeyValues;
+}
+
 Address Message::getAddress() const {
     return address;
 }
 
 string Message::str() const {
     static const char* typeRepr[] = {
-        "CREATE", "READ", "UPDATE", "DELETE", "REPLY",  "READ_RSP", "DELETE_RSP", "VIEW_CHANGE"
+        "CREATE", "READ", "UPDATE", "DELETE", "REPLY", "CREATE_RSP",
+        "READ_RSP", "DELETE_RSP", "UPDATE_RSP", "VIEW_CHANGE"
     };
     static const char* statusRepr[] = { "OK", "FAIL" };
 
@@ -96,6 +105,7 @@ vector<char> Message::serialize() {
     bool addVal = addKey && (valSize > 1);
     bool addStatus = true;
     bool addReplicaType = false;
+    // bool addCommands = false;
 
     uint8_t flags =
         (addKey         ? dsproto::flags::KEY       : 0u) |
@@ -145,7 +155,8 @@ Message Message::deserialize(char *data, size_t size) {
     auto hasKey     = !!(header.flags & dsproto::flags::KEY);
     auto hasValue   = !!(header.flags & dsproto::flags::VAL);
     auto hasStatus  = !!(header.flags & dsproto::flags::STATUS);
-    auto hasReplica = !!(header.flags & dsproto::flags::REPLICA);
+    auto hasReplica __attribute__((unused))
+        = !!(header.flags & dsproto::flags::REPLICA);
 
     auto *offset = data + sizeof(header);
     auto nextStringToken = [&](string &val) {

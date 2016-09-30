@@ -11,6 +11,8 @@ struct IOBuf {
     size_t  size;
 };
 
+class EmulNet;
+
 namespace net {
 
 class Transport {

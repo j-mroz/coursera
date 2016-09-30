@@ -7,30 +7,23 @@
 #ifndef MP2NODE_H_
 #define MP2NODE_H_
 
-/**
- * Header files
- */
-#include "stdincludes.h"
 #include "EmulNet.h"
 #include "Node.h"
-#include "HashTable.h"
-#include "Log.h"
-#include "Params.h"
-#include "net/Message.h"
-#include "Queue.h"
-
+#include "service/DistributedHashTable.h"
 
 #include <memory>
+#include <vector>
 
 using std::unique_ptr;
-using NodeList = vector<Node>;
+using NodeList = std::vector<Node>;
 
 class DSService;
+class EmulNet;
+class Log;
 
 class DSNode {
 public:
     DSNode(shared_ptr<Member>, Params*, EmulNet*, Log*, Address*);
-    DSNode(DSService* impl);
     DSNode()        = delete;
     DSNode(DSNode&) = delete;
     virtual ~DSNode();
@@ -49,7 +42,8 @@ public:
     Member*     getMemberNode();
 
 private:
-    unique_ptr<DSService> impl;
+    unique_ptr<DistributedHashTableService> impl;
+    Member *member;
 };
 
 using MP2Node = DSNode;

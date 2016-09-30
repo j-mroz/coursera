@@ -125,7 +125,7 @@ void Log::logNodeAdd(Address *thisNode, Address *addedAddr) {
  */
 void Log::logNodeRemove(Address *thisNode, Address *removedAddr) {
 	static char stdstring[200];
-	int written = sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
+	sprintf(stdstring, "Node %d.%d.%d.%d:%d removed at time %d", removedAddr->addr[0], removedAddr->addr[1], removedAddr->addr[2], removedAddr->addr[3], *(short *)&removedAddr->addr[4], par->getcurrtime());
     LOG(thisNode, stdstring);
 }
 

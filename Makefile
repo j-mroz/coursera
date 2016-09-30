@@ -13,15 +13,16 @@ CXX = /usr/local/bin/g++-6
 # CXX = g++
 # CXX = clang-3.8
 
-OBJS = $(shell find . -name "*.o" -print)
+OBJS= $(shell find . -name "*.o" -print)
 
 all:
-	$(MAKE) -C simulator
-	$(MAKE) -C net
-	${CXX} -o Application ${OBJS} ${CFLAGS}
-
+	$(MAKE) -j8 -C simulator
+	$(MAKE) -j8 -C net
+	$(MAKE) -j8 -C service
+	${CXX} -o Application simulator/*.o net/*.o service/*.o ${CFLAGS} 
 
 clean:
 	$(MAKE) clean -C simulator
 	$(MAKE) clean -C net
-	rm -rf *.o Application dbg.log msgcount.log stats.log machine.log
+	$(MAKE) clean -C service
+	rm -rf *.o Application dbg.log msgcount.log stats.log machine.log *.dSYM
