@@ -38,7 +38,6 @@ namespace flags {
     static const uint8_t VAL     = 0b01000000;
     static const uint8_t STATUS  = 0b00100000;
     static const uint8_t REPLICA = 0b00010000;
-    static const uint8_t COMMAND = 0b00001000;
 }
 
 static const uint8_t DsProto        = 0xDB;

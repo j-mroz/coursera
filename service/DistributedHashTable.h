@@ -32,8 +32,8 @@ public:
     virtual ~DHTBackend() = default;
     virtual AddressList getNaturalNodes(const string&)  = 0;
     virtual void updateCluster()                        = 0;
-    virtual bool check(const Message &msg)              = 0;
-    virtual void handle(const Message &msg)             = 0;
+    virtual bool probe(const Message &msg)              = 0;
+    virtual void handle(Message &msg)                   = 0;
 };
 
 
@@ -49,8 +49,8 @@ public:
     virtual string read(const string &key)              = 0;
     virtual void   update(string &&key, string &&value) = 0;
     virtual void   remove(const string &key)            = 0;
-    virtual bool   check(Message &msg)                  = 0;
-    virtual void   handle(const Message &msg)           = 0;
+    virtual bool   probe(Message &msg)                  = 0;
+    virtual void   handle(Message &msg)                 = 0;
     virtual void   onClusterUpdate()                    = 0;
 };
 
