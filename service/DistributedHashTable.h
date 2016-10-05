@@ -18,7 +18,7 @@ using Message = dsproto::Message;
 class MembershipServiceIface {
 public:
     virtual const AddressList& getMembersList() = 0;
-    virtual Address getLocalAddres()            = 0;
+    virtual Address getLocalAddress()           = 0;
 };
 using MembershipProxy = shared_ptr<MembershipServiceIface>;
 

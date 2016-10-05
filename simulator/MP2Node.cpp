@@ -27,7 +27,7 @@ public:
         return addrList;
     }
 
-    Address getLocalAddres() override {
+    Address getLocalAddress() override {
         return member->addr;
     }
 

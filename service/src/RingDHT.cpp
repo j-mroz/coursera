@@ -24,56 +24,6 @@ bool operator<(const RingNode &a, const RingNode &b) {
     return a.rangeEnd < b.rangeEnd;
 };
 
-template <typename IterBase>
-class CyclicIter : public IterBase {
-    IterBase begin;
-    IterBase end;
-
-public:
-    CyclicIter(IterBase begin, IterBase end, IterBase pos) : IterBase(pos) {
-        this->begin = begin;
-        this->end = end;
-    }
-
-    CyclicIter operator=(const CyclicIter &rhs) {
-        IterBase::operator=(rhs);
-        begin = rhs.begin;
-        end = rhs.end;
-        return *this;
-    }
-
-    CyclicIter operator++() {
-        IterBase::operator++();
-        if (*this == end)
-            IterBase::operator=(begin);
-        return *this;
-    }
-
-    CyclicIter operator++(int) {
-        auto preIncr = *this;
-        operator++();
-        return preIncr;
-    }
-
-    CyclicIter operator--() {
-        if (*this == begin)
-            IterBase::operator=(end);
-        IterBase::operator--();
-        return *this;
-    }
-
-    CyclicIter operator--(int) {
-        auto preIncr = *this;
-        operator--();
-        return preIncr;
-    }
-};
-
-template <typename IterBase>
-CyclicIter<IterBase> ring_iter(IterBase b, IterBase e, IterBase pos) {
-    return CyclicIter<IterBase>(b, e, pos);
-}
-
 
 class RingPartitioner {
     uint16_t replicationFactor;
@@ -108,35 +58,51 @@ public:
     ReplicaSet getReplicaSet(const Address &addr) {
         auto addrRingNode = RingNode{ 0, getRingPos(addr), 0 };
         auto addrRingNodeIter = lower_bound(ring.cbegin(), ring.cend(), addrRingNode);
-        assert(addrRingNodeIter != ring.end());
-
-        auto first = ring_iter(ring.cbegin(), ring.cend(), addrRingNodeIter);
-        auto last = first;
+        auto first = addrRingNodeIter;
+        auto last = addrRingNodeIter;
+        assert(first != ring.end());
 
         for (auto sibling = 1ul; sibling < replicationFactor; ++sibling) {
-            if (first - 1 == last) {
+            if (previous(first) == last) {
                 break;
             }
-            --first;
-            if (first == last + 1) {
+            first = previous(first);
+            if (first == next(last)) {
                 break;
             }
-            ++last;
+            last = next(last);
         }
 
         vector<RingNode> replicaNodes;
         replicaNodes.reserve(replicationFactor*2);
-        auto replicatorIdx = size_t(0);
-        do {
+        auto replicatorIdx = 0ul;
+        while (true) {
             replicaNodes.push_back(*first);
             if (first == addrRingNodeIter) {
                 replicatorIdx = replicaNodes.size() - 1;
             }
-
-        } while (first++ != last);
-
+            if (first == last) {
+                break;
+            }
+            first = next(first);
+        }
 
         return tie(replicaNodes, replicatorIdx);
+    }
+
+    template<typename Iter>
+    Iter next(Iter iter) {
+        ++iter;
+        if (iter == ring.end())
+            iter = ring.begin();
+        return iter;
+    }
+
+    template<typename Iter>
+    Iter previous(Iter iter) {
+        if (iter == ring.begin())
+            iter = ring.end();
+        return --iter;
     }
 
     AddressList getNaturalNodes(const string &key, const AddressList &endpoints) {
@@ -258,7 +224,7 @@ public:
         return req; //TODO whatto return?
     }
 
-    decltype(endpoints.begin()) getEntry(const Address &addr) {
+    auto getEntry(const Address &addr) -> decltype(endpoints.begin()) {
         auto cmpEntry = [&addr](const EndpointEntry &entry) {
             return entry.address == addr;
         };
@@ -291,7 +257,7 @@ public:
         return successRspCount;
     }
 
-    bool finish() {
+    void finish() {
         finished = true;
     }
 
@@ -367,7 +333,6 @@ public:
             log->logReadFail(&localAddr, isCoordinator, transaction, reqKey);
             break;
         case dsproto::UPDATE:
-        case dsproto::UPDATE_RSP:
             log->logUpdateFail(&localAddr, isCoordinator, transaction, reqKey, reqValue);
             break;
         case dsproto::DELETE:
@@ -382,27 +347,26 @@ public:
 
 class RingDHTBackend : public DHTBackend {
 public:
-
     RingDHTBackend(shared_ptr<dsproto::MessageStream> msgStream,
                    MembershipProxy membershipProxy,
                    size_t replicationFactor, Log *log)
-            : partitioner(replicationFactor, RING_SIZE),
-              requestsLoger(log, msgStream->getLocalAddress(), false) {
-        this->replicationFactor = replicationFactor;
-        this->membershipManager = move(membershipProxy);
+        : partitioner(replicationFactor, RING_SIZE),
+          requestsLoger(log, membershipProxy->getLocalAddress(), false) {
+        this->thisNodeAddr = membershipProxy->getLocalAddress();
+        this->membershipProxy = move(membershipProxy);
         this->msgStream = msgStream;
     }
 
     virtual ~RingDHTBackend() = default;
 
     AddressList getNaturalNodes(const string &key) override {
-        auto members = membershipManager->getMembersList();
+        auto members = membershipProxy->getMembersList();
         partitioner.updateRing(members);
         return partitioner.getNaturalNodes(key, members);
     }
 
     void updateCluster() override {
-        auto members = membershipManager->getMembersList();
+        auto members = membershipProxy->getMembersList();
         if (members.size() <= 1) {
             return;
         }
@@ -410,38 +374,33 @@ public:
         //TODO this is inefficent, implement listener callbacks on members and timestamp
         partitioner.updateRing(members);
 
-        auto myAddr = membershipManager->getLocalAddres();
-        auto naturalNodes = partitioner.getNaturalNodes(myAddr, members);
-        assert(naturalNodes.size() > 1 && naturalNodes[0] == myAddr);
+        auto naturalNodes = partitioner.getNaturalNodes(thisNodeAddr, members);
+        assert(naturalNodes.size() > 1 && naturalNodes[0] == thisNodeAddr);
 
-        if (nextNode == naturalNodes[1]) {
+        if (nextNodeAddr == naturalNodes[1]) {
             return;
         }
-        cout << myAddr.str() << " $ Node " << nextNode.getAddress() << " failed!\n";
-        nextNode = naturalNodes[1];
+        nextNodeAddr = naturalNodes[1];
 
         if (hashTable.size() == 0)
             return;
 
         auto replicaNodes = vector<RingNode>();
         auto replicatorIdx = size_t(0);
-        tie(replicaNodes, replicatorIdx) = partitioner.getReplicaSet(myAddr);
-        syncBegin(replicaNodes, replicatorIdx);
+        tie(replicaNodes, replicatorIdx) = partitioner.getReplicaSet(thisNodeAddr);
+        sync(replicaNodes, replicatorIdx);
     }
 
-    void syncBegin(const vector<RingNode> replicaNodes, size_t replicatorIdx) {
+    void sync(const vector<RingNode> replicaNodes, size_t replicatorIdx) {
         if (!(replicatorIdx < replicaNodes.size())) {
             return;
         }
-        auto localAddr = membershipManager->getLocalAddres();
         auto syncMsgs = vector<Message>(replicaNodes.size() - replicatorIdx - 1,
-                                        Message(dsproto::SYNC_BEGIN, localAddr));
+                                        Message(dsproto::SYNC_BEGIN, thisNodeAddr));
         ++transaction;
         for (auto &msg : syncMsgs) {
             msg.setTransaction(transaction);
         }
-
-        auto replicationFactor = partitioner.getReplicationFactor();
 
         for (auto &kv : hashTable) {
             auto &key = kv.first;
@@ -450,32 +409,17 @@ public:
 
             for (auto i = 0ul; i < syncMsgs.size(); ++i) {
                 if (ringPos > replicaNodes[i].rangeBegin ||
-                    replicaNodes[i].rangeEnd < replicaNodes[i].rangeBegin)
+                    replicaNodes[i].rangeEnd < replicaNodes[i].rangeBegin) {
                     syncMsgs[i].addSyncKeyValue(key, value);
+                }
             }
         }
-        cout << localAddr.str() << " $ SYNC send => [";
         // TODO again calling getMembersList??
-        auto members = membershipManager->getMembersList();
+        auto members = membershipProxy->getMembersList();
         for (auto i = 0ul; i < syncMsgs.size(); ++i) {
             msgStream->send(members[replicaNodes[replicatorIdx + 1 + i].index],
                             syncMsgs[i]);
-            cout << members[replicaNodes[replicatorIdx + i + 1].index].str() << ", ";
         }
-        cout << "]\n";
-    }
-
-
-    void handleSyncBegin(Message &msg) {
-        auto localAddr = membershipManager->getLocalAddres();
-        cout << localAddr.str() << " $ SYNC recv [";
-        for (auto &tuple : msg.getSyncKeyValues()) {
-            auto kv = make_pair(move(get<0>(tuple)), move(get<1>(tuple)));
-            hashTable.insert(kv);
-            assert(hashTable.count(kv.first) != 0);
-            cout << kv.first << ", ";
-        }
-        cout << "]\n";
     }
 
     bool probe(const Message &msg) override {
@@ -487,12 +431,6 @@ public:
     }
 
     void handle(Message &msg) override {
-        auto localAddr = membershipManager->getLocalAddres();
-        auto remoteAddr = msg.getAddress();
-        auto transaction = msg.getTransaction();
-        auto key = msg.getKey();
-        auto value = msg.getValue();
-
         if (msg.getType() == dsproto::CREATE) {
             handleCreateRequest(msg);
         } else if (msg.getType() == dsproto::READ) {
@@ -502,96 +440,86 @@ public:
         } else if (msg.getType() == dsproto::DELETE) {
             handleDeleteRequest(msg);
         } else if (msg.getType() == dsproto::SYNC_BEGIN) {
-            handleSyncBegin(msg);
+            handleSync(msg);
         }
     }
 
-    void handleCreateRequest(Message &msg) {
-        auto localAddr = membershipManager->getLocalAddres();
-        auto remoteAddr = msg.getAddress();
-        auto transaction = msg.getTransaction();
-        auto key = msg.getKey();
-        auto value = msg.getValue();
-        auto rsp = Message(dsproto::CREATE_RSP, localAddr);
-        rsp.setTransaction(transaction);
+    void handleCreateRequest(Message &req) {
+        auto key = req.getKey();
+        auto rsp = Message(dsproto::CREATE_RSP, thisNodeAddr);
+        rsp.setTransaction(req.getTransaction());
 
         if (hashTable.count(key)) {
             rsp.setStatus(dsproto::FAIL);
-            requestsLoger.logFailure(msg);
+            requestsLoger.logFailure(req);
         } else {
-            hashTable[key] = value;
+            hashTable[key] = req.getValue();
             rsp.setKey(key);
             rsp.setStatus(dsproto::OK);
-            requestsLoger.logSuccess(msg, rsp);
+            requestsLoger.logSuccess(req, rsp);
         }
 
-        msgStream->send(remoteAddr, rsp);
+        msgStream->send(req.getAddress(), rsp);
     }
 
-    void hadleReadRequest(Message &msg) {
-        auto localAddr = membershipManager->getLocalAddres();
-        auto remoteAddr = msg.getAddress();
-        auto key = msg.getKey();
-        auto transaction = msg.getTransaction();
-
-        auto rsp = Message(dsproto::READ_RSP, localAddr);
-        rsp.setTransaction(transaction);
+    void hadleReadRequest(Message &req) {
+        auto key = req.getKey();
+        auto rsp = Message(dsproto::READ_RSP, thisNodeAddr);
+        rsp.setTransaction(req.getTransaction());
 
         auto valueIterator = hashTable.find(key);
         if (valueIterator != hashTable.end()) {
             auto value = valueIterator->second;
             rsp.setKeyValue(key, value);
             rsp.setStatus(dsproto::OK);
-            requestsLoger.logSuccess(msg, rsp);
+            requestsLoger.logSuccess(req, rsp);
         } else {
             rsp.setStatus(dsproto::FAIL);
-            requestsLoger.logFailure(msg);
+            requestsLoger.logFailure(req);
         }
-        msgStream->send(remoteAddr, rsp);
+        msgStream->send(req.getAddress(), rsp);
     }
 
-    void handleUpdateRequest(Message &msg) {
-        auto localAddr = membershipManager->getLocalAddres();
-        auto remoteAddr = msg.getAddress();
-        auto key = msg.getKey();
-        auto value = msg.getKey();
-        auto transaction = msg.getTransaction();
-
-        auto rsp = Message(dsproto::UPDATE_RSP, localAddr);
-        rsp.setTransaction(transaction);
+    void handleUpdateRequest(Message &req) {
+        auto key = req.getKey();
+        auto rsp = Message(dsproto::UPDATE_RSP, thisNodeAddr);
+        rsp.setTransaction(req.getTransaction());
+        rsp.setKey(key);
 
         auto valueIterator = hashTable.find(key);
         if (valueIterator != hashTable.end()) {
-            valueIterator->second = value;
+            valueIterator->second = req.getValue();
             rsp.setStatus(dsproto::OK);
-            requestsLoger.logSuccess(msg, rsp);
+            requestsLoger.logSuccess(req, rsp);
         } else {
             rsp.setStatus(dsproto::FAIL);
-            rsp.setKeyValue(key, value);
-            requestsLoger.logFailure(msg);
+            requestsLoger.logFailure(req);
         }
-        msgStream->send(remoteAddr, rsp);
+        msgStream->send(req.getAddress(), rsp);
     }
 
-    void handleDeleteRequest(Message &msg) {
-        auto localAddr = membershipManager->getLocalAddres();
-        auto remoteAddr = msg.getAddress();
-        auto key = msg.getKey();
-        auto value = msg.getKey();
-        auto transaction = msg.getTransaction();
-
-        auto rsp = Message(dsproto::DELETE_RSP, localAddr);
-        rsp.setTransaction(transaction);
+    void handleDeleteRequest(Message &req) {
+        auto key = req.getKey();
+        auto rsp = Message(dsproto::DELETE_RSP, thisNodeAddr);
+        rsp.setTransaction(req.getTransaction());
         rsp.setKey(key);
 
         if (hashTable.count(key) == 0) {
             rsp.setStatus(dsproto::FAIL);
-            requestsLoger.logFailure(msg);
+            requestsLoger.logFailure(req);
         } else {
             hashTable.erase(key);
-            requestsLoger.logSuccess(msg, rsp);
+            requestsLoger.logSuccess(req, rsp);
         }
-        msgStream->send(remoteAddr, rsp);
+        msgStream->send(req.getAddress(), rsp);
+    }
+
+    void handleSync(Message &msg) {
+        for (auto &tuple : msg.getSyncKeyValues()) {
+            auto kv = make_pair(move(get<0>(tuple)), move(get<1>(tuple)));
+            hashTable.insert(kv);
+            assert(hashTable.count(kv.first) != 0);
+        }
     }
 
 private:
@@ -600,8 +528,9 @@ private:
 
     uint64_t            transaction = 0;
     size_t              replicationFactor;
-    Address             nextNode;
-    MembershipProxy     membershipManager;
+    Address             thisNodeAddr;
+    Address             nextNodeAddr;
+    MembershipProxy     membershipProxy;
     RingPartitioner     partitioner;
     HashTable           hashTable;
     MsgStreamPtr        msgStream;
@@ -629,18 +558,13 @@ public:
     }
 
     string read(const string &key) override {
-        cout << msgStream->getLocalAddress().str() << " $ READ REQ => [";
-        auto endpoints = getNaturalNodes(key);
-        for (auto &addr : endpoints) {
-            cout << addr.str() << ", ";
-        }
-        cout << "]\n";
-
         auto msg = Message(dsproto::READ, msgStream->getLocalAddress());
         msg.setTransaction(++transaction);
         msg.setKey(key);
         auto readCommand = Command(getNaturalNodes(key), move(msg));
         execute(move(readCommand));
+
+        //TODO
         return string("");
     }
 
@@ -699,12 +623,6 @@ public:
     }
 
     void handleReadResponse(Message &msg) {
-        cout << msgStream->getLocalAddress().str() << " $ READ RSP "
-             << "from " << msg.getAddress().str()
-             << " status: "
-             << (msg.getStatus() == dsproto::OK ? " => OK\n" : " => FAIL\n");
-
-        auto localAddr = msgStream->getLocalAddress();
         auto reqTransaction = msg.getTransaction();
         auto commandIterator = pendingCommands.find(reqTransaction);
         if (commandIterator == pendingCommands.end())
@@ -713,18 +631,18 @@ public:
         auto &command = commandIterator->second;
         auto reqKey = command.getRequest().getKey();
         auto rspValue = msg.getValue();
-        auto peersCount = command.getEndpoints().size();
+        auto quromMin = command.getEndpoints().size()/2 + 1;
 
         command.addResponse(move(msg));
 
         if (command.hasFinished())
             return;
 
-        if (command.getSuccessRspCount() > peersCount/2) {
+        if (command.getSuccessRspCount() >= quromMin) {
             requestsLoger.logSuccess(command.getRequest(),
                                      command.getFirstSuccesRsp());
             command.finish();
-        } else if (command.getFailRspCount() > peersCount/2) {
+        } else if (command.getFailRspCount() >= quromMin) {
             requestsLoger.logFailure(command.getRequest());
             command.finish();
         }
@@ -739,13 +657,14 @@ public:
         auto &command = commandIterator->second;
         command.addResponse(move(msg));
 
-        auto peersCount = command.getEndpoints().size();
-        if (command.getSuccessRspCount() > peersCount/2 && !command.hasFinished()) {
+        auto quorumMin = command.getEndpoints().size()/2 + 1;
+        if (command.getSuccessRspCount() >= quorumMin && !command.hasFinished()) {
             requestsLoger.logSuccess(command.getRequest(),
                                      command.getFirstSuccesRsp());
             command.finish();
-        } else if (command.getSuccessRspCount() > peersCount/2 && !command.hasFinished()) {
-            // command.finish();
+        } else if (command.getSuccessRspCount() >= quorumMin && !command.hasFinished()) {
+            requestsLoger.logFailure(command.getRequest());
+            command.finish();
         }
     }
 
@@ -783,7 +702,6 @@ public:
             command.updateTimeLeft();
             if (command.getTimeLeft() == 0) {
                 requestsLoger.logFailure(command.getRequest());
-                auto addr = msgStream->getLocalAddress();
                 command.finish();
             }
         }
