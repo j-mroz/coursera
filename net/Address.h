@@ -18,12 +18,14 @@ public:
 		memcpy(&addr[0], (char *)&id, sizeof(uint32_t));
 		memcpy(&addr[4], (char *)&port, sizeof(uint16_t));
 	}
-	Address(int32_t id, int16_t port) {
+	Address(int32_t id, uint16_t port) {
 		memcpy(&addr[0], (char *)&id, sizeof(uint32_t));
 		memcpy(&addr[4], (char *)&port, sizeof(uint16_t));
 	}
 	Address& operator=(const Address&) = default;
-	bool operator==(const Address &) const;
+	bool operator ==(const Address& anotherAddress) const {
+		return !memcmp(&this->addr[0], &anotherAddress.addr[0], 6*sizeof(char));
+	}
 
 	std::string getAddress() const {
 		return std::to_string(getIp()) + ":" + std::to_string(getPort());

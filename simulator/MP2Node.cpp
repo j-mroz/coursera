@@ -43,10 +43,10 @@ DSNode::DSNode(shared_ptr<Member> member, Params*,
                EmulNet *emulNet, Log *log, Address *local) {
     this->member = member.get();
     auto transport = make_shared<net::Transport>(emulNet, &member->mp2q, *local);
-    auto msgStream = make_shared<dsproto::MessageStream>(transport);
+    auto msgQueue = make_shared<proto::dht::MessageQueue>(transport);
     auto membershipAdapter = make_shared<MembershipServiceAdapter>(member);
     this->impl = unique_ptr<DistributedHashTableService>(
-        new DistributedHashTableService(membershipAdapter, msgStream, log));
+        new DistributedHashTableService(membershipAdapter, msgQueue, log));
 }
 
 

@@ -65,6 +65,14 @@ void Log::LOG(Address *addr, const char * str, ...) {
 
 		fp = fopen(stdstring2, "w");
 		fp2 = fopen(stdstring3, "w");
+		if (!fp) {
+			fprintf(stderr, "Failed to open: %s\n", stdstring2);
+			exit(1);
+		}
+		if (!fp2) {
+			fprintf(stderr, "Failed to open: %s\n", stdstring3);
+			exit(1);
+		}
 
 		dbg_opened=639;
 	}

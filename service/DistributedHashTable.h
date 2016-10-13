@@ -12,7 +12,9 @@ class Log;
 
 using MembersList = std::vector<MemberListEntry>;
 using AddressList = std::vector<Address>;
-using Message = dsproto::Message;
+// using Message = dsproto::Message;
+using proto::dht::Message;
+using proto::dht::MessageQueue;
 
 
 class MembershipServiceIface {
@@ -60,7 +62,7 @@ public:
 class DistributedHashTableService {
 public:
     DistributedHashTableService(MembershipProxy membershipProxy,
-        shared_ptr<dsproto::MessageStream> msgStream, Log *log);
+        shared_ptr<MessageQueue> msgQueue, Log *log);
 
     void create(string &&key, string &&value);
     void read(const string &key);
@@ -72,10 +74,10 @@ public:
     AddressList getNaturalNodes(const string &key);
 
 private:
-    shared_ptr<dsproto::MessageStream>  msgStream;
+    shared_ptr<MessageQueue>    msgQueue;
     shared_ptr<DHTBackend>      backend;
-    unique_ptr<DHTCoordinator>     coordinator;
-    Log                                 *log;
+    unique_ptr<DHTCoordinator>  coordinator;
+    Log                         *log;
 };
 
 #endif

@@ -1,104 +1,81 @@
 #ifndef MESSAGE_H_
 #define MESSAGE_H_
 
+#include "Address.h"
+#include "net/Transport.h"
+
+
+#include "protocol/dht_proto_constants.h"
+#include "protocol/dht_proto_types.h"
+#include "protocol/dht_proto_types.tcc"
+
+#include <thrift/protocol/TBinaryProtocol.h>
+#include <thrift/protocol/TCompactProtocol.h>
+#include <thrift/transport/TBufferTransports.h>
+
+#include <boost/make_shared.hpp>
+
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "Address.h"
-#include "net/Transport.h"
-// using std::string;
-// using std::vector;
 
-#undef _packed_
-#define _packed_ __attribute__((packed, aligned(2)))
+namespace proto {
+namespace dht {
 
-namespace dsproto {
-
-enum MsgType { CREATE, READ, UPDATE, DELETE, REPLY,
-    CREATE_RSP, READ_RSP, DELETE_RSP, UPDATE_RSP, VIEW_CHANGE,
-    SYNC_BEGIN, SYNC_END };
-
-enum ReqStatus { OK, FAIL };
-
-struct _packed_ Header {
-    uint8_t  proto;
-    uint8_t  version;
-    uint8_t  msgType;
-    uint8_t  flags;
-    uint32_t transaction;
-    uint32_t id;
-    uint16_t port;
-    uint16_t crc;
-    uint32_t payloadSize;
-};
-
-namespace flags {
-    static const uint8_t KEY     = 0b10000000;
-    static const uint8_t VAL     = 0b01000000;
-    static const uint8_t STATUS  = 0b00100000;
-    static const uint8_t REPLICA = 0b00010000;
-}
-
-static const uint8_t DsProto        = 0xDB;
-static const uint8_t DsProtoVersion = 0x01;
-
-static const uint8_t VsProto        = 0x3B;
-static const uint8_t VsProtoVersion = 0x01;
+using namespace apache::thrift;
+using namespace apache::thrift::transport;
+using namespace apache::thrift::protocol;
 
 using KeyValueList = std::vector<tuple<std::string, std::string>>;
 
-class Message {
+inline int32_t decodeAsIp4(const string &bytes) {
+    assert(bytes.size() == 16);
+    assert(bytes[10] == (char)0xFF);
+    assert(bytes[11] == (char)0xFF);
+
+    //TODO network bytes order!
+    auto ip4 = uint32_t(0);
+    memcpy((char *)&ip4, bytes.data() + 12, sizeof(uint32_t));
+    return ip4;
+}
+
+inline string encodeAsIp6(uint32_t ip4) {
+    //TODO network byte order!
+    auto *ip4Bytes = (char *)&ip4;
+    auto ip6Bytes = string(16, 0);
+    ip6Bytes[10] = (char)0xFF;
+    ip6Bytes[11] = (char)0xFF;
+    ip6Bytes[12] = ip4Bytes[0];
+    ip6Bytes[13] = ip4Bytes[1];
+    ip6Bytes[14] = ip4Bytes[2];
+    ip6Bytes[15] = ip4Bytes[3];
+    return ip6Bytes;
+}
+
+class MessageQueue {
+    using Msg = proto::dht::Message;
+    using Protocol = TCompactProtocol;
+    using MemoryBufferPtr = boost::shared_ptr<TMemoryBuffer>;
+    using ProtocolPtr = boost::shared_ptr<TCompactProtocol>;
+    using TransportPtr = std::shared_ptr<net::Transport>;
+
 public:
-
-    Message() {};
-    Message(uint8_t type, Address addr);
-
-    uint8_t getType() const;
-
-    void setKeyValue(std::string key, std::string val);
-    void setKey(std::string key);
-    const string& getKey() const;
-    const string& getValue() const;
-
-    void setStatus(uint8_t status);
-    uint8_t getStatus() const;
-
-    void setTransaction(uint32_t transaction);
-    uint32_t getTransaction() const;
-
-    void addSyncKeyValue(std::string key, std::string value);
-    KeyValueList& getSyncKeyValues();
-
-    Address getAddress() const;
-
-    std::string str() const;
-    std::vector<char> serialize();
-    static Message deserialize(char *data, size_t size);
-
-private:
-
-    uint8_t  type;
-    uint8_t  status = OK;
-    uint8_t  replicaType;
-    uint32_t transaction;
-    std::string   key;
-    std::string   value;
-    KeyValueList  syncKeyValues;
-    Address       address;
-};
-
-
-class MessageStream {
-    using Msg = Message;
-public:
-    MessageStream(std::shared_ptr<net::Transport> net) : transport(net) {
+    MessageQueue(std::shared_ptr<net::Transport> net)
+        : transport(net),
+          inputBuffer(boost::make_shared<TMemoryBuffer>(nullptr, 0)),
+          outputBuffer(boost::make_shared<TMemoryBuffer>()),
+          inputProtocol(boost::make_shared<Protocol>(inputBuffer)),
+          outputProtocol(boost::make_shared<Protocol>(outputBuffer)) {
         addr = transport->getAddress();
     }
 
     void send(Address remote, Msg &msg) {
-        auto msgbuff = msg.serialize();
-        transport->send(remote, msgbuff.data(), msgbuff.size());
+        outputBuffer->resetBuffer();
+        msg.write(outputProtocol.get());
+        auto size = outputBuffer->available_read();
+        auto *buf = outputBuffer->borrow(nullptr, &size);
+        transport->send(remote, (char*)buf, size);
     }
 
     bool recieveMessages() {
@@ -106,9 +83,13 @@ public:
     }
 
     Msg dequeue() {
-        auto buf = transport->recieve();
-        auto msg = Msg::deserialize((char *)buf.data, buf.size);
-        free(buf.data);
+        auto iobuf = transport->recieve();
+        inputBuffer->resetBuffer((uint8_t *)iobuf.data, iobuf.size);
+
+        auto msg = proto::dht::Message();
+        msg.read(inputProtocol.get());
+
+        free(iobuf.data);
         return msg;
     }
 
@@ -121,11 +102,15 @@ public:
     }
 
 private:
-    Address                          addr;
-    std::shared_ptr<net::Transport>  transport;
-    int32_t                          transaction = 0;
+    TransportPtr        transport;
+    MemoryBufferPtr     inputBuffer;
+    MemoryBufferPtr     outputBuffer;
+    ProtocolPtr         inputProtocol;
+    ProtocolPtr         outputProtocol;
+    Address             addr;
 };
 
+}
 }
 
 #endif

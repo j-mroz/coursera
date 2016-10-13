@@ -11,6 +11,14 @@
 #include <unordered_map>
 
 using namespace std;
+using proto::dht::ReqStatus;
+using proto::dht::ReqType;
+
+auto getSrcEndpoint(const Message msg) -> Address {
+    return Address(
+        proto::dht::decodeAsIp4(msg.header.srcAddr.bytes),
+        msg.header.srcPort);
+}
 
 using AddressList = vector<Address>;
 
@@ -117,13 +125,15 @@ public:
         assert(endpoints.size() > 0);
         ring.resize(endpoints.size());
         for (auto idx = 0ul; idx < endpoints.size(); ++idx) {
-            auto nextIdx = (idx + 1) % ring.size();
             auto ringPos = getRingPos(endpoints[idx]);
-            ring[nextIdx].rangeBegin = ringPos;
             ring[idx].rangeEnd = ringPos;
             ring[idx].index = idx;
         }
         sort(ring.begin(), ring.end());
+        for (auto idx = 0ul; idx < endpoints.size(); ++idx) {
+            auto nextIdx = (idx + 1) % ring.size();
+            ring[nextIdx].rangeBegin = ring[idx].rangeEnd;
+        }
     }
 
     AddressList getNaturalNodes(uint64_t ringPos, const AddressList &endpoints) {
@@ -152,9 +162,6 @@ public:
  * Commands
  ******************************************************************************/
 class Command {
-protected:
-    using Message = dsproto::Message;
-
 public:
     struct EndpointEntry {
         Address address;
@@ -163,18 +170,16 @@ public:
         Message rsp;
     };
 
+private:
     vector<EndpointEntry> endpoints;
     vector<Message>       endpoinsRsp;
-    Message req;
-
-
-
-private:
+    Message  req;
     uint16_t rspCount           = 0;
     uint16_t failRspCount       = 0;
     uint16_t successRspCount    = 0;
     uint32_t timeout            = 10;
-    bool finished               = false;
+    bool     finished           = false;
+
 
 public:
     Command() {};
@@ -193,20 +198,20 @@ public:
         return endpoints;
     }
 
-    void multicast(shared_ptr<dsproto::MessageStream> msgStream) {
+    void multicast(shared_ptr<MessageQueue> msgQueue) {
         for (auto &remote : endpoints) {
-            msgStream->send(remote.address, req);
+            msgQueue->send(remote.address, req);
         }
     }
 
     void addResponse(Message rsp) {
-        auto entryPos = getEntry(rsp.getAddress());
+        auto entryPos = getEntry(getSrcEndpoint(rsp));
         if (entryPos == endpoints.end()) {
             return;
         }
         entryPos->responded = true;
         rspCount++;
-        if (rsp.getStatus() == dsproto::OK) {
+        if (rsp.header.status == ReqStatus::OK) {
             successRspCount++;
         } else {
             failRspCount++;
@@ -293,24 +298,18 @@ public:
         if (log == nullptr)
             return;
 
-        auto &reqKey    = req.getKey();
-        auto &reqValue  = req.getValue();
-        auto &rspKey    = rsp.getKey();
-        auto &rspValue  = rsp.getValue();
-        auto transaction = req.getTransaction();
-
-        switch (req.getType()) {
-        case dsproto::CREATE:
-            log->logCreateSuccess(&localAddr, isCoordinator, 0, reqKey, reqValue);
+        switch (req.header.type) {
+        case ReqType::CREATE:
+            log->logCreateSuccess(&localAddr, isCoordinator, req.header.transaction, req.body.key, req.body.value);
             break;
-        case dsproto::READ:
-            log->logReadSuccess(&localAddr, isCoordinator, transaction, rspKey, rspValue);
+        case ReqType::READ:
+            log->logReadSuccess(&localAddr, isCoordinator, req.header.transaction, rsp.body.key, rsp.body.value);
             break;
-        case dsproto::UPDATE:
-            log->logUpdateSuccess(&localAddr, isCoordinator, transaction, reqKey, reqValue);
+        case ReqType::UPDATE:
+            log->logUpdateSuccess(&localAddr, isCoordinator, req.header.transaction, req.body.key, req.body.value);
             break;
-        case dsproto::DELETE:
-            log->logDeleteSuccess(&localAddr, isCoordinator, 0, reqKey);
+        case ReqType::DELETE:
+            log->logDeleteSuccess(&localAddr, isCoordinator, req.header.transaction, req.body.key);
             break;
         default:
             break;
@@ -321,22 +320,18 @@ public:
         if (log == nullptr)
             return;
 
-        auto &reqKey = req.getKey();
-        auto &reqValue = req.getValue();
-        auto transaction = req.getTransaction();
-
-        switch (req.getType()) {
-        case dsproto::CREATE:
-            log->logCreateFail(&localAddr, isCoordinator, transaction, reqKey, reqKey);
+        switch (req.header.type) {
+        case ReqType::CREATE:
+            log->logCreateFail(&localAddr, isCoordinator, req.header.transaction, req.body.key, req.body.value);
             break;
-        case dsproto::READ:
-            log->logReadFail(&localAddr, isCoordinator, transaction, reqKey);
+        case ReqType::READ:
+            log->logReadFail(&localAddr, isCoordinator, req.header.transaction, req.body.key);
             break;
-        case dsproto::UPDATE:
-            log->logUpdateFail(&localAddr, isCoordinator, transaction, reqKey, reqValue);
+        case ReqType::UPDATE:
+            log->logUpdateFail(&localAddr, isCoordinator, req.header.transaction, req.body.key, req.body.value);
             break;
-        case dsproto::DELETE:
-            log->logDeleteFail(&localAddr, isCoordinator, transaction, reqKey);
+        case ReqType::DELETE:
+            log->logDeleteFail(&localAddr, isCoordinator, req.header.transaction, req.body.key);
             break;
         default:
             break;
@@ -347,14 +342,14 @@ public:
 
 class RingDHTBackend : public DHTBackend {
 public:
-    RingDHTBackend(shared_ptr<dsproto::MessageStream> msgStream,
+    RingDHTBackend(shared_ptr<MessageQueue> msgQueue,
                    MembershipProxy membershipProxy,
                    size_t replicationFactor, Log *log)
         : partitioner(replicationFactor, RING_SIZE),
           requestsLoger(log, membershipProxy->getLocalAddress(), false) {
         this->thisNodeAddr = membershipProxy->getLocalAddress();
         this->membershipProxy = move(membershipProxy);
-        this->msgStream = msgStream;
+        this->msgQueue = msgQueue;
     }
 
     virtual ~RingDHTBackend() = default;
@@ -395,12 +390,10 @@ public:
         if (!(replicatorIdx < replicaNodes.size())) {
             return;
         }
+        auto msgTemplate = createMessage(ReqType::SYNC_BEGIN);
+        msgTemplate.header.transaction = ++transaction;
         auto syncMsgs = vector<Message>(replicaNodes.size() - replicatorIdx - 1,
-                                        Message(dsproto::SYNC_BEGIN, thisNodeAddr));
-        ++transaction;
-        for (auto &msg : syncMsgs) {
-            msg.setTransaction(transaction);
-        }
+                                        msgTemplate);
 
         for (auto &kv : hashTable) {
             auto &key = kv.first;
@@ -410,120 +403,122 @@ public:
             for (auto i = 0ul; i < syncMsgs.size(); ++i) {
                 if (ringPos > replicaNodes[i].rangeBegin ||
                     replicaNodes[i].rangeEnd < replicaNodes[i].rangeBegin) {
-                    syncMsgs[i].addSyncKeyValue(key, value);
+                    syncMsgs[i].body.keyValueMap[key] = value;
                 }
             }
         }
         // TODO again calling getMembersList??
         auto members = membershipProxy->getMembersList();
         for (auto i = 0ul; i < syncMsgs.size(); ++i) {
-            msgStream->send(members[replicaNodes[replicatorIdx + 1 + i].index],
+            msgQueue->send(members[replicaNodes[replicatorIdx + 1 + i].index],
                             syncMsgs[i]);
         }
     }
 
     bool probe(const Message &msg) override {
         static auto msgTypes = set<uint8_t>{
-            dsproto::CREATE, dsproto::READ, dsproto::UPDATE, dsproto::DELETE,
-            dsproto::SYNC_BEGIN
+            ReqType::CREATE, ReqType::READ, ReqType::UPDATE, ReqType::DELETE,
+            ReqType::SYNC_BEGIN
         };
-        return msgTypes.count(msg.getType()) > 0;
+        return msgTypes.count(msg.header.type) > 0;
     }
 
     void handle(Message &msg) override {
-        if (msg.getType() == dsproto::CREATE) {
+        if (msg.header.type == ReqType::CREATE) {
             handleCreateRequest(msg);
-        } else if (msg.getType() == dsproto::READ) {
+        } else if (msg.header.type == ReqType::READ) {
             hadleReadRequest(msg);
-        } else if (msg.getType() == dsproto::UPDATE) {
+        } else if (msg.header.type == ReqType::UPDATE) {
             handleUpdateRequest(msg);
-        } else if (msg.getType() == dsproto::DELETE) {
+        } else if (msg.header.type == ReqType::DELETE) {
             handleDeleteRequest(msg);
-        } else if (msg.getType() == dsproto::SYNC_BEGIN) {
+        } else if (msg.header.type == ReqType::SYNC_BEGIN) {
             handleSync(msg);
         }
     }
 
     void handleCreateRequest(Message &req) {
-        auto key = req.getKey();
-        auto rsp = Message(dsproto::CREATE_RSP, thisNodeAddr);
-        rsp.setTransaction(req.getTransaction());
+        auto rsp = createMessage(ReqType::CREATE_RSP);
+        rsp.header.transaction = req.header.transaction;
+        rsp.body.key = req.body.key;
 
-        if (hashTable.count(key)) {
-            rsp.setStatus(dsproto::FAIL);
+        if (hashTable.count(req.body.key)) {
             requestsLoger.logFailure(req);
+            rsp.header.status = ReqStatus::FAIL;
         } else {
-            hashTable[key] = req.getValue();
-            rsp.setKey(key);
-            rsp.setStatus(dsproto::OK);
             requestsLoger.logSuccess(req, rsp);
+            hashTable[req.body.key] = move(req.body.value);
+            rsp.header.status = ReqStatus::OK;
         }
 
-        msgStream->send(req.getAddress(), rsp);
+        msgQueue->send(getSrcEndpoint(req), rsp);
     }
 
     void hadleReadRequest(Message &req) {
-        auto key = req.getKey();
-        auto rsp = Message(dsproto::READ_RSP, thisNodeAddr);
-        rsp.setTransaction(req.getTransaction());
+        auto rsp = createMessage(ReqType::READ_RSP);
+        rsp.header.transaction = req.header.transaction;
 
-        auto valueIterator = hashTable.find(key);
+        auto valueIterator = hashTable.find(req.body.key);
         if (valueIterator != hashTable.end()) {
-            auto value = valueIterator->second;
-            rsp.setKeyValue(key, value);
-            rsp.setStatus(dsproto::OK);
+            rsp.body.key = req.body.key;
+            rsp.body.value = valueIterator->second;
+            rsp.header.status = ReqStatus::OK;
             requestsLoger.logSuccess(req, rsp);
         } else {
-            rsp.setStatus(dsproto::FAIL);
+            rsp.header.status = ReqStatus::FAIL;
             requestsLoger.logFailure(req);
         }
-        msgStream->send(req.getAddress(), rsp);
+        msgQueue->send(getSrcEndpoint(req), rsp);
     }
 
     void handleUpdateRequest(Message &req) {
-        auto key = req.getKey();
-        auto rsp = Message(dsproto::UPDATE_RSP, thisNodeAddr);
-        rsp.setTransaction(req.getTransaction());
-        rsp.setKey(key);
+        auto rsp = createMessage(ReqType::UPDATE_RSP);
+        rsp.header.transaction = req.header.transaction;
+        rsp.body.key = req.body.key;
 
-        auto valueIterator = hashTable.find(key);
+        auto valueIterator = hashTable.find(req.body.key);
         if (valueIterator != hashTable.end()) {
-            valueIterator->second = req.getValue();
-            rsp.setStatus(dsproto::OK);
             requestsLoger.logSuccess(req, rsp);
+            valueIterator->second = move(rsp.body.value);
+            rsp.header.status = ReqStatus::OK;
         } else {
-            rsp.setStatus(dsproto::FAIL);
             requestsLoger.logFailure(req);
+            rsp.header.status = ReqStatus::FAIL ;
         }
-        msgStream->send(req.getAddress(), rsp);
+        msgQueue->send(getSrcEndpoint(req), rsp);
     }
 
     void handleDeleteRequest(Message &req) {
-        auto key = req.getKey();
-        auto rsp = Message(dsproto::DELETE_RSP, thisNodeAddr);
-        rsp.setTransaction(req.getTransaction());
-        rsp.setKey(key);
+        auto rsp = createMessage(ReqType::DELETE_RSP);
+        rsp.header.transaction = req.header.transaction;
+        rsp.body.key = req.body.key;
 
-        if (hashTable.count(key) == 0) {
-            rsp.setStatus(dsproto::FAIL);
+        if (hashTable.count(req.body.key) == 0) {
             requestsLoger.logFailure(req);
+            rsp.header.status = ReqStatus::FAIL;
         } else {
-            hashTable.erase(key);
             requestsLoger.logSuccess(req, rsp);
+            hashTable.erase(req.body.key);
+            rsp.header.status = ReqStatus::OK;
         }
-        msgStream->send(req.getAddress(), rsp);
+        msgQueue->send(getSrcEndpoint(req), rsp);
     }
 
     void handleSync(Message &msg) {
-        for (auto &tuple : msg.getSyncKeyValues()) {
-            auto kv = make_pair(move(get<0>(tuple)), move(get<1>(tuple)));
-            hashTable.insert(kv);
-            assert(hashTable.count(kv.first) != 0);
-        }
+        hashTable.insert(msg.body.keyValueMap.begin(),
+                         msg.body.keyValueMap.end());
+    }
+
+    Message createMessage(ReqType::type type) {
+        auto msg = Message();
+        msg.header.type = type;
+        msg.header.srcAddr.bytes = proto::dht::encodeAsIp6(thisNodeAddr.getIp());
+        msg.header.srcPort = thisNodeAddr.getPort();
+        return msg;
     }
 
 private:
-    using MsgStreamPtr = shared_ptr<dsproto::MessageStream>;
+    using MsgQueuePtr = shared_ptr<MessageQueue>;
     using HashTable = unordered_map<string, string>;
 
     uint64_t            transaction = 0;
@@ -533,78 +528,80 @@ private:
     MembershipProxy     membershipProxy;
     RingPartitioner     partitioner;
     HashTable           hashTable;
-    MsgStreamPtr        msgStream;
+    MsgQueuePtr         msgQueue;
     CommandLogger       requestsLoger;
 };
 
 
 class RingDHTCoordinator : public DHTCoordinator {
 public:
-    RingDHTCoordinator(shared_ptr<dsproto::MessageStream> msgStream,
+    RingDHTCoordinator(shared_ptr<MessageQueue> msgQueue,
             RingPartitioner partitioner, MembershipProxy membershipProxy,
             Log *log)
                 : partitioner(partitioner),
-                  requestsLoger(log, msgStream->getLocalAddress(), true) {
+                  requestsLoger(log, msgQueue->getLocalAddress(), true) {
         this->membershipProxy = membershipProxy;
-        this->msgStream = msgStream;
+        this->msgQueue = msgQueue;
     }
 
     void create(string &&key, string &&value) override {
-        auto msg = Message(dsproto::CREATE, msgStream->getLocalAddress());
-        msg.setTransaction(++transaction);
-        msg.setKeyValue(key, move(value));
-        auto createCommand = Command(getNaturalNodes(key), move(msg));
+        auto msg = createMessage(ReqType::CREATE);
+        msg.header.transaction = ++transaction;
+        msg.body.key = key;
+        msg.body.value = move(value);
+        auto createCommand = Command(getNaturalNodes(move(key)), move(msg));
         execute(move(createCommand));
     }
 
     string read(const string &key) override {
-        auto msg = Message(dsproto::READ, msgStream->getLocalAddress());
-        msg.setTransaction(++transaction);
-        msg.setKey(key);
+        auto msg = createMessage(ReqType::READ);
+        msg.header.transaction = ++transaction;
+        msg.body.key = key;
         auto readCommand = Command(getNaturalNodes(key), move(msg));
         execute(move(readCommand));
 
-        //TODO
+        //TODO we should return sth? maybe future
         return string("");
     }
 
     void update(string &&key, string &&value) override {
-        auto msg = Message(dsproto::UPDATE, msgStream->getLocalAddress());
-        msg.setTransaction(++transaction);
-        msg.setKeyValue(key, move(value));
-        auto createCommand = Command(getNaturalNodes(key), move(msg));
+        auto msg = createMessage(ReqType::UPDATE);
+        msg.header.transaction = ++transaction;
+        msg.body.key = key;
+        msg.body.value = move(value);
+        auto createCommand = Command(getNaturalNodes(move(key)), move(msg));
         execute(move(createCommand));
     }
 
     void remove(const string &key) override {
-        auto msg = Message(dsproto::DELETE, msgStream->getLocalAddress());
-        msg.setTransaction(++transaction);
-        msg.setKey(key);
+        auto msg = createMessage(ReqType::DELETE);
+        msg.header.transaction = ++transaction;
+        msg.body.key = key;
         auto removeCommand = Command(getNaturalNodes(key), move(msg));
         execute(move(removeCommand));
     }
 
     bool probe(Message &msg) override {
         static auto msgTypes = set<uint8_t>{
-            dsproto::READ_RSP, dsproto::DELETE_RSP, dsproto::CREATE_RSP, dsproto::UPDATE_RSP
+            ReqType::READ_RSP, ReqType::DELETE_RSP, ReqType::CREATE_RSP, ReqType::UPDATE_RSP
         };
-        return msgTypes.count(msg.getType()) > 0;
+        return msgTypes.count(msg.header.type) > 0;
     }
 
     void handle(Message &msg) override {
-        if (msg.getType() == dsproto::CREATE_RSP) {
+        if (msg.header.type == ReqType::CREATE_RSP) {
             handleCreateResponse(msg);
-        } else if (msg.getType() == dsproto::DELETE_RSP) {
+        } else if (msg.header.type == ReqType::DELETE_RSP) {
             handleDeleteResponse(msg);
-        } else if (msg.getType() == dsproto::READ_RSP) {
+        } else if (msg.header.type == ReqType::READ_RSP) {
             handleReadResponse(msg);
-        } else if (msg.getType() == dsproto::UPDATE_RSP) {
+        } else if (msg.header.type == ReqType::UPDATE_RSP) {
             handleUpdate(msg);
         }
     }
 
     void handleCreateResponse(Message &msg) {
-        auto reqTransaction = msg.getTransaction();
+        auto reqTransaction = msg.header.transaction;
         auto commandIterator = pendingCommands.find(reqTransaction);
 
         if (commandIterator == pendingCommands.end())
@@ -623,33 +620,31 @@ public:
     }
 
     void handleReadResponse(Message &msg) {
-        auto reqTransaction = msg.getTransaction();
+        auto reqTransaction = msg.header.transaction;
         auto commandIterator = pendingCommands.find(reqTransaction);
         if (commandIterator == pendingCommands.end())
             return;
 
         auto &command = commandIterator->second;
-        auto reqKey = command.getRequest().getKey();
-        auto rspValue = msg.getValue();
-        auto quromMin = command.getEndpoints().size()/2 + 1;
+        auto qurumMin = command.getEndpoints().size()/2 + 1;
 
         command.addResponse(move(msg));
 
         if (command.hasFinished())
             return;
 
-        if (command.getSuccessRspCount() >= quromMin) {
+        if (command.getSuccessRspCount() >= qurumMin) {
             requestsLoger.logSuccess(command.getRequest(),
                                      command.getFirstSuccesRsp());
             command.finish();
-        } else if (command.getFailRspCount() >= quromMin) {
+        } else if (command.getFailRspCount() >= qurumMin) {
             requestsLoger.logFailure(command.getRequest());
             command.finish();
         }
     }
 
     void handleUpdate(const Message &msg) {
-        auto reqTransaction = msg.getTransaction();
+        auto reqTransaction = msg.header.transaction;
         auto commandIterator = pendingCommands.find(reqTransaction);
         if (commandIterator == pendingCommands.end())
             return;
@@ -669,7 +664,7 @@ public:
     }
 
     void handleDeleteResponse(const Message &msg) {
-        auto reqTransaction = msg.getTransaction();
+        auto reqTransaction = msg.header.transaction;
         auto commandIterator = pendingCommands.find(reqTransaction);
         if (commandIterator == pendingCommands.end())
             return;
@@ -690,7 +685,7 @@ public:
 
     void execute(Command&& command) {
         pendingCommands.emplace(transaction, move(command));
-        pendingCommands[transaction].multicast(msgStream);
+        pendingCommands[transaction].multicast(msgQueue);
     }
 
     void onClusterUpdate() override {
@@ -713,11 +708,20 @@ public:
         return partitioner.getNaturalNodes(key, members);
     }
 
+    Message createMessage(ReqType::type type) {
+        auto msg = Message();
+        auto addr = msgQueue->getLocalAddress();
+        msg.header.type = type;
+        msg.header.srcAddr.bytes = proto::dht::encodeAsIp6(addr.getIp());
+        msg.header.srcPort = addr.getPort();
+        return msg;
+    }
+
 private:
-    shared_ptr<dsproto::MessageStream>  msgStream;
-    RingPartitioner partitioner;
-    MembershipProxy membershipProxy;
-    CommandLogger   requestsLoger;
+    shared_ptr<MessageQueue>    msgQueue;
+    RingPartitioner             partitioner;
+    MembershipProxy             membershipProxy;
+    CommandLogger               requestsLoger;
 
     uint32_t transaction = 0;
 
@@ -732,18 +736,18 @@ private:
  ******************************************************************************/
 DistributedHashTableService::DistributedHashTableService(
         MembershipProxy membershipProxy,
-        shared_ptr<dsproto::MessageStream> msgStream,
+        shared_ptr<MessageQueue> msgQueue,
         Log *log) {
     static const size_t REPLICATION_FACTOR = 3;
 
-    this->msgStream = msgStream;
+    this->msgQueue = msgQueue;
 
     auto *dhtBacked = new (std::nothrow) RingDHTBackend(
-        msgStream, membershipProxy, REPLICATION_FACTOR, log);
+        msgQueue, membershipProxy, REPLICATION_FACTOR, log);
     backend = shared_ptr<DHTBackend>(dhtBacked);
 
     auto *dhtCordinator = new RingDHTCoordinator(
-        msgStream,
+        msgQueue,
         RingPartitioner(REPLICATION_FACTOR, RING_SIZE),
         membershipProxy, log);
     coordinator = unique_ptr<DHTCoordinator>(dhtCordinator);
@@ -768,12 +772,12 @@ void DistributedHashTableService::remove(const string &key) {
 }
 
 bool DistributedHashTableService::recieveMessages() {
-    return msgStream->recieveMessages();
+    return msgQueue->recieveMessages();
 }
 
 bool DistributedHashTableService::processMessages() {
-    while (!msgStream->empty()) {
-        auto msg = msgStream->dequeue();
+    while (!msgQueue->empty()) {
+        auto msg = msgQueue->dequeue();
         if (backend->probe(msg)) {
             backend->handle(msg);
         } else if (coordinator->probe(msg)) {
