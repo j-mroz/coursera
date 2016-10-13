@@ -155,6 +155,11 @@ public:
             if (activePos != activeMembers.end())
                 member = activePos->second;
 
+            if (member.id == node->getId() &&
+                member.port == node->getPort()) {
+                member.timestamp = timestamp;
+            }
+
             if (hasFailed(member)) {
                 failedMembers[hash] = member;
                 activeMembers.erase(hash);
