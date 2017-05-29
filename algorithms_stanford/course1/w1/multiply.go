@@ -1,3 +1,26 @@
+// Copyright (c) 2017 Jaroslaw Mroz
+//
+// MIT License
+//
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to
+// the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package main
 
 import (
@@ -112,14 +135,20 @@ func (bi *BigInt) Cmp(num *BigInt) int {
 }
 
 func (bi *BigInt) copy(src *BigInt) {
-	*bi = *src
-	bi.legs = append([]Word{}, bi.legs...)
+	if bi != src {
+		*bi = *src
+		bi.legs = append([]Word{}, bi.legs...)
+	}
+}
+
+func (bi *BigInt) clone() BigInt {
+	var cloned BigInt
+	cloned.copy(bi)
+	return cloned
 }
 
 // Mul multiplies the BigInt by other BigInt.
 func (bi *BigInt) Mul(a, b *BigInt) *BigInt {
-	// *bi = *a
-	// bi.legs = append([]Word{}, bi.legs...)
 	bi.copy(a)
 	bi.mulNaive(b)
 	return bi
@@ -174,7 +203,7 @@ func (bi *BigInt) mulWord(num Word) *BigInt {
 
 //LshWord left shifts BigInt by a sh words
 func (bi *BigInt) LshWord(sh int) {
-	head := make([]Word, sh, len(bi.legs))
+	head := make([]Word, sh, sh+len(bi.legs))
 	bi.legs = append(head, bi.legs...)
 }
 
@@ -215,10 +244,10 @@ func (bi *BigInt) addWordAt(num Word, pos int) {
 	for i := pos; i < len(bi.legs); i++ {
 		carryLow, bi.legs[i] = addWW(bi.legs[i], carryLow)
 		carryHigh, carryLow = addWW(carryHigh, carryLow)
-		if carryHigh != 0 {
-			// Temporary safty check.
-			panic("overflow!")
-		}
+		// if carryHigh != 0 {
+		// 	// Temporary safty check.
+		// 	panic("overflow!")
+		// }
 	}
 
 	if carryLow != 0 {
@@ -238,11 +267,8 @@ func (bi *BigInt) Sub(a, b *BigInt) *BigInt {
 		return bi
 	}
 
-	// rhsLegs := num.legs
 	if a.Cmp(b) < 0 {
 		a, b = b, a
-		// rhsLegs = bi.legs
-		// bi.legs = append([]Word{}, num.legs...)
 		bi.copy(a)
 		bi.negative = !bi.negative
 	} else {
@@ -260,14 +286,22 @@ func (bi *BigInt) Sub(a, b *BigInt) *BigInt {
 		// From big.Int.subVV_g
 		x, y := bi.legs[i], b.legs[i]
 		z := x - y - carry
+		bi.legs[i] = z
 		carry = ((y & ^x) | ((y | ^x) & z)) >> (wordBits - 1)
+	}
+
+	for i := len(b.legs); i < len(bi.legs); i++ {
+		x := bi.legs[i]
+		z := x - carry
+		carry = ((0 & ^x) | ((0 | ^x) & z)) >> (wordBits - 1)
 		bi.legs[i] = z
 	}
 
-	if carry != 0 {
-		bi.legs = append(bi.legs, carry)
-		bi.negative = !bi.negative
-	}
+	// Not needed as we ensured that we substract from bigger number
+	// if carry != 0 {
+	// 	// bi.legs = append(bi.legs, carry)
+	// 	// bi.negative = !bi.negative
+	// }
 
 	return bi
 }
@@ -305,14 +339,16 @@ func subWW(num1, num2 Word) (borrow, ret Word) {
 }
 
 func mulWW(num1, num2 Word) (high, low Word) {
+	var carry Word
 	highNum1, lowNum1 := (num1 >> wordLowBits), (num1 & wordLowMask)
 	highNum2, lowNum2 := (num2 >> wordLowBits), (num2 & wordLowMask)
 
 	low = lowNum1 * lowNum2
 	mid := (highNum1 * lowNum2) + (lowNum1 * highNum2)
 	high = highNum1 * highNum2
-	low += (mid & wordLowMask) << wordLowBits
-	high += mid >> wordLowBits
+
+	carry, low = addWW(low, (mid&wordLowMask)<<wordLowBits)
+	high += mid>>wordLowBits + carry
 
 	return
 }
@@ -324,33 +360,57 @@ func max(a, b int) int {
 	return b
 }
 
-// func karatsuba(num1, num2 *BigInt) *BigInt {
-// 	// if len(num2.legs) == 1 {
-// 	// 	return num1.mulWord(num2.legs[0])
-// 	// }
-// 	// if len(num1.legs) == 1 {
-// 	// 	return num2.mulWord(num1.legs[0])
-// 	// }
-// 	//
-// 	// // calculates the size of the numbers
-// 	// m := max(len(num1.legs), len(num2.legs)) / 2
-// 	//
-// 	// var high1, low1, high2, low2 BigInt
-// 	// // high1.legs = append([]Word{}, num1.legs[m:]...)
-// 	// // low1.legs = append([]Word{}, num1.legs[:m]...)
-// 	// // high2.legs = append([]Word{}, num2.legs[m:]...)
-// 	// // low2.legs = append([]Word{}, num2.legs[:m]...)
-// 	// //
-// 	// // /* 3 calls made to numbers approximately half the size */
-// 	// z0 := karatsuba(&low1, &low2)
-// 	// z1 := karatsuba(low1.Add(&high1), low2.Add(&high2))
-// 	// z2 := karatsuba(&high1, &high2)
-// 	//
-// 	//
-// 	// z1.Sub(z2).Sub(z0)
-// 	// return (z2*10 ^ (2 * m2)) + ((z1-z2-z0)*10 ^ (m2)) + (z0)
-// 	// return num1
-// }
+func karatsuba(num1, num2 BigInt) BigInt {
+	negative := (num1.negative != num2.negative)
+	num1.negative = false
+	num2.negative = false
+	result := karatsubaAbs(num1, num2)
+	result.negative = negative
+	return result
+}
+
+func karatsubaAbs(num1, num2 BigInt) BigInt {
+	if len(num2.legs) == 1 {
+		result := num1.clone()
+		result.mulWord(num2.legs[0])
+		return result
+	}
+	if len(num1.legs) == 1 {
+		result := num2.clone()
+		result.mulWord(num1.legs[0])
+		return result
+	}
+
+	// Calculates the size of the numbers.
+	m2 := max(len(num1.legs), len(num2.legs)) / 2
+
+	// Splits numbers into high and low halfs
+	var high1, low1, high2, low2 BigInt
+	high1.legs = num1.legs[m2:]
+	low1.legs = num1.legs[:m2]
+	high2.legs = num2.legs[m2:]
+	low2.legs = num2.legs[:m2]
+
+	// 3 calls made to numbers approximately half the size.
+	z0 := karatsuba(low1, low2)
+	var t1, t2 BigInt
+	z1 := karatsuba(*t1.Add(&low1, &high1), *t2.Add(&low2, &high2))
+	z2 := karatsuba(high1, high2)
+
+	result := z2.clone()
+	result.LshWord(m2 * 2)
+
+	tmp := z1.clone()
+	tmp.Sub(&tmp, &z2)
+	tmp.Sub(&tmp, &z0)
+	tmp.LshWord(m2)
+	result.Add(&result, &tmp)
+
+	result.Add(&result, &z0)
+
+	return result
+
+}
 
 func isInteger(arg string) bool {
 	if arg[0] == '-' && len(arg) > 1 {
@@ -389,4 +449,10 @@ func main() {
 	}
 
 	fmt.Println(num1, "*", num2, "=", multiply(num1, num2))
+
+	a, b := new(BigInt), new(BigInt)
+	a.SetString(num1)
+	b.SetString(num2)
+	res := karatsuba(*a, *b)
+	fmt.Println("karatsuba, ", num1, "*", num2, "=", res.String())
 }
