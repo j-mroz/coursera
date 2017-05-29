@@ -48,7 +48,7 @@ func mergeCountInversionsImpl(arr []int, buf []int) int {
 		inversions += mergeCountInversionsImpl(rightArr, rightBuf)
 	}
 
-	// Merge slices.
+	// Merge slices and count inversions.
 	lIdx, rIdx, bIdx := 0, 0, 0
 	lEnd, rEnd, bufEnd := len(leftArr), len(rightArr), len(buf)
 	for bIdx < bufEnd {
