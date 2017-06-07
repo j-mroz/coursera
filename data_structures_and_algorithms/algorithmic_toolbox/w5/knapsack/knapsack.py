@@ -2,7 +2,6 @@
 import sys
 
 def optimal_weight(W, weights):
-    #knapsacks[items][knapsak_weight]
     knapsacks = [[0] * (W+1) for _ in range(len(weights)+1)]
     
     for items in range(1, len(weights) + 1):
@@ -10,11 +9,9 @@ def optimal_weight(W, weights):
             if weights[items-1] > knapsak_weight:
                 knapsacks[items][knapsak_weight] = knapsacks[items-1][knapsak_weight]
             else:
-                item = items - 1
-
                 knapsacks[items][knapsak_weight] = max(
                     knapsacks[items-1][knapsak_weight],
-                    knapsacks[items-1][knapsak_weight - weights[item]] + weights[item])
+                    knapsacks[items-1][knapsak_weight - weights[items-1]] + weights[items-1])
     return knapsacks[len(weights)][W]
     # return knapsacks
 
