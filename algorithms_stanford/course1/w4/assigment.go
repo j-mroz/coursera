@@ -35,6 +35,8 @@ import (
 )
 
 func loadGraph(file *os.File) (g graph.Graph, err error) {
+	g = *graph.New()
+
 	reader := bufio.NewReader(file)
 	for {
 		var vertices []int
@@ -68,7 +70,7 @@ func main() {
 	}
 
 	minCut := g.MinCut()
-	fmt.Println("min cut size:", minCut.Len())
+	fmt.Println("min cut size:", len(minCut))
 	fmt.Println("min cut edges:", minCut)
 
 }

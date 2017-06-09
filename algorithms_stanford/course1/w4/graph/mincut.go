@@ -38,84 +38,88 @@ type Edge struct {
 }
 
 // EdgeList is just list of edges, defined for convenience.
-type EdgeList struct {
-	edges []Edge
-}
+type EdgeList []Edge
 
 // Copy inserts new edges into a list from src.
-func (l *EdgeList) Copy(src EdgeList) {
-	l.Push(src.edges...)
+func (edges *EdgeList) Copy(src EdgeList) {
+	edges.Push(src...)
 }
 
 // Push inserts new edges into a list
-func (l *EdgeList) Push(edges ...Edge) {
-	l.edges = append(l.edges, edges...)
+func (edges *EdgeList) Push(values ...Edge) {
+	*edges = append(*edges, values...)
 }
 
 // Pop removes last/top element from list anr returns it.
-func (l *EdgeList) Pop() (last Edge) {
-	last, l.edges = l.edges[l.Len()-1], l.edges[:l.Len()-1]
+func (edges *EdgeList) Pop() (last Edge) {
+	lastIdx := len(*edges) - 1
+	last = (*edges)[lastIdx]
+	*edges = (*edges)[:lastIdx]
 	return
 }
 
 // Remove delets edges from the list based on provided predicate function.
-func (l *EdgeList) Remove(pred func(Edge) bool) {
-	filtered := l.edges[:0]
-	for _, edge := range l.edges {
+func (edges *EdgeList) Remove(pred func(Edge) bool) {
+	filtered := (*edges)[:0]
+	for _, edge := range *edges {
 		if !pred(edge) {
 			filtered = append(filtered, edge)
 		}
 	}
-	l.edges = filtered
+	*edges = filtered
 }
 
-// Len returns lenght of connection list
-func (l *EdgeList) Len(edges ...Edge) int {
-	return len(l.edges)
-}
-
-func (l *EdgeList) shuffle(seed int64) {
+func (edges *EdgeList) shuffle(seed int64) {
 	randGen := rand.New(rand.NewSource(seed))
-	perm := randGen.Perm(l.Len())
+	perm := randGen.Perm(len(*edges))
 
 	for i := range perm {
-		l.edges[i], l.edges[perm[i]] = l.edges[perm[i]], l.edges[i]
+		(*edges)[i], (*edges)[perm[i]] = (*edges)[perm[i]], (*edges)[i]
 	}
 }
 
-// AdjHashList implement concept of adjacency list, but uses map as a
-// first level of lookup.
-type AdjHashList struct {
-	list map[int][]int
-}
+type adjHashList map[int][]int
 
 // Connect adds dst edge list to src vertex.
-func (adj *AdjHashList) Connect(src int, dst ...int) {
-	// Lazy initialization
-	if adj.list == nil {
-		adj.list = make(map[int][]int)
-	}
-	if _, found := adj.list[src]; !found {
-		adj.list[src] = []int{}
+func (adj adjHashList) Connect(src int, dst ...int) {
+	if _, found := adj[src]; !found {
+		adj[src] = []int{}
 	}
 
-	adj.list[src] = append(adj.list[src], dst...)
+	adj[src] = append(adj[src], dst...)
 }
 
 // Graph is top level abstraction for the graph.
 type Graph struct {
-	adj AdjHashList
+	adj       adjHashList
+	minVertex int
+	maxVertex int
+}
+
+// New creates a Graph struct
+func New() *Graph {
+	return &Graph{
+		adj:       make(adjHashList),
+		minVertex: math.MaxInt64,
+		maxVertex: 0,
+	}
 }
 
 // Connect adds src vertex to adj list and its outgoing edges.
 func (g *Graph) Connect(src int, dst ...int) {
+	if src <= g.minVertex {
+		g.minVertex = src
+	}
+	if src >= g.maxVertex {
+		g.maxVertex = src
+	}
 	g.adj.Connect(src, dst...)
 }
 
 func (g *Graph) collectUndirectedEdges() (edges EdgeList) {
 	uniqueEdges := make(map[Edge]int)
 
-	for src, srcConnections := range g.adj.list {
+	for src, srcConnections := range g.adj {
 		for _, dst := range srcConnections {
 			edge := Edge{src, dst}
 			if dst < src {
@@ -136,40 +140,32 @@ func (g *Graph) collectUndirectedEdges() (edges EdgeList) {
 
 // MinCut is parallel  implementation of Karager minimal graph cut algorithm.
 // See: https://en.wikipedia.org/wiki/Karger%27s_algorithm
-func (g *Graph) MinCut() (ret EdgeList) {
+func (g *Graph) MinCut() (bestCut EdgeList) {
 	const parallelJobs = 10
 	const trials = 500
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	bestCut, bestCutSize := EdgeList{}, math.MaxUint32
-
+	bestCutSize := math.MaxUint32
 	edges := g.collectUndirectedEdges()
-
-	// Get the minimum and maximum vertex number.
-	minVertex, maxVertex := getMinMaxVertex(g)
 
 	// Do the trials in parallel.
 	for i := 0; i < trials/parallelJobs; i++ {
 		var cuts [parallelJobs]EdgeList
 		var wg sync.WaitGroup
 
-		// Run jubs in parallel then wait for wall jobs to finish.
+		// Run jubs in parallel then wait for all jobs to finish.
 		wg.Add(parallelJobs)
-		asyncMinCut := func(idx int, seed int64) {
-			defer wg.Done()
-			cuts[idx] = minCut(edges, minVertex, maxVertex, seed)
-		}
 		for i := 0; i < len(cuts); i++ {
-			go asyncMinCut(i, int64(rand.Int()))
+			go g.asyncMinCut(edges, int64(rand.Int()), &wg, &cuts[i])
 		}
 		wg.Wait()
 
-		// Find the bestCut ,if any, among those returned by parallel jobs.
+		// Find the bestCut, if any, among those returned by parallel jobs.
 		for i := 0; i < len(cuts); i++ {
-			if cuts[i].Len() < bestCutSize {
+			if len(cuts[i]) < bestCutSize {
 				bestCut = cuts[i]
-				bestCutSize = cuts[i].Len()
+				bestCutSize = len(cuts[i])
 			}
 		}
 	}
@@ -177,22 +173,25 @@ func (g *Graph) MinCut() (ret EdgeList) {
 	return bestCut
 }
 
-type asyncMinCut func(idx int, seed int64)
+func (g *Graph) asyncMinCut(e EdgeList, randSeed int64, wg *sync.WaitGroup, result *EdgeList) {
+	defer wg.Done()
+	*result = g.minCut(e, randSeed)
+}
 
-func minCut(edges EdgeList, minVertex, maxVertex int, seed int64) (cutEdges EdgeList) {
+func (g *Graph) minCut(edges EdgeList, randSeed int64) (cutEdges EdgeList) {
 	// Copy and shuffle edges for randomnes.
 	cutEdges.Copy(edges)
-	cutEdges.shuffle(seed)
+	cutEdges.shuffle(randSeed)
 
 	// Allocate FindUnion disjoint set. It will represent our graph of graphs.
-	hyperGraph := disjointset.New(minVertex, maxVertex)
+	hyperGraph := disjointset.New(g.minVertex, g.maxVertex)
 
 	// See: https://en.wikipedia.org/wiki/Karger%27s_algorithm
 	for hyperGraph.Count() > 2 {
 		edge := cutEdges.Pop()
-		src := hyperGraph.Find(edge.Src)
-		dst := hyperGraph.Find(edge.Dst)
-		hyperGraph.Unite(src, dst)
+		srcGraph := hyperGraph.Find(edge.Src)
+		dstGraph := hyperGraph.Find(edge.Dst)
+		hyperGraph.Unite(srcGraph, dstGraph)
 	}
 
 	// Filter out edges that belong to the same connected component -> have
@@ -202,19 +201,4 @@ func minCut(edges EdgeList, minVertex, maxVertex int, seed int64) (cutEdges Edge
 	})
 
 	return cutEdges
-}
-
-func getMinMaxVertex(g *Graph) (minVertexNum, maxVertexNum int) {
-	minVertexNum = math.MaxInt64
-
-	for src := range g.adj.list {
-		if src > maxVertexNum {
-			maxVertexNum = src
-		}
-		if src < minVertexNum {
-			minVertexNum = src
-		}
-	}
-
-	return minVertexNum, maxVertexNum
 }

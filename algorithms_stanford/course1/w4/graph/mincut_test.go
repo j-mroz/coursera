@@ -31,7 +31,7 @@ func TestEdgeListPush(t *testing.T) {
 	lst := EdgeList{}
 	lst.Push(Edge{0, 1}, Edge{1, 2}, Edge{2, 0})
 
-	if len(lst.edges) != 3 {
+	if len(lst) != 3 {
 		t.Error("Failed to add edges")
 	}
 }
@@ -44,34 +44,34 @@ func TestEdgeListRemove(t *testing.T) {
 		return e.Src == e.Dst
 	})
 
-	if len(lst.edges) != 3 {
+	if len(lst) != 3 {
 		t.Error("Failed to remove edge")
 	}
 }
 
 func TestGraphConnect(t *testing.T) {
-	g := Graph{}
+	g := New()
 	g.Connect(0, 1, 2, 3)
-	if len(g.adj.list[0]) != 3 {
+	if len(g.adj[0]) != 3 {
 		t.Error("Failed to connect edges")
 	}
 }
 
 func TestCollectUndirectedEdgges(t *testing.T) {
-	g := Graph{}
+	g := New()
 	g.Connect(0, 1, 2, 3)
 	g.Connect(1, 0)
 	g.Connect(2, 0)
 	g.Connect(3, 0)
 
 	edges := g.collectUndirectedEdges()
-	if edges.Len() != 3 {
+	if len(edges) != 3 {
 		t.Error("Failed to collect edges")
 	}
 }
 
 func TestMinCut(t *testing.T) {
-	g := Graph{}
+	g := New()
 	g.Connect(0, 1, 2, 3)
 	g.Connect(1, 0)
 	g.Connect(2, 0)

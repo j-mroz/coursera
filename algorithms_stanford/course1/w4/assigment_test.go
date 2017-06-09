@@ -92,7 +92,7 @@ func testMinCut(inPath, outPath string, t *testing.T) {
 	}
 
 	minCutEdges := g.MinCut()
-	minCut := minCutEdges.Len()
+	minCut := len(minCutEdges)
 
 	if minCut != expectedMinCut {
 		t.Errorf("%s: MinCut: got %d, expected %d.\n", inPath, minCut, expectedMinCut)
