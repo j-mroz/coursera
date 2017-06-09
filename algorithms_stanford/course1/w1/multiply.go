@@ -182,15 +182,12 @@ func (bi *BigInt) mulWord(num Word) *BigInt {
 	var carryHigh, carryLow Word
 
 	for i := range bi.legs {
-		var carryHigh1, carryHigh2, carryHigh3 Word
+		var carryHigh1, carryHigh2 Word
 
 		carryHigh1, carryLow, bi.legs[i] = mulAddWWW(bi.legs[i], num, carryLow)
 		carryHigh2, carryLow = addWW(carryLow, carryHigh)
-		carryHigh3, carryHigh = addWW(carryHigh1, carryHigh2)
-		if carryHigh3 != 0 {
-			// temporary safty check
-			panic("overflow!")
-		}
+		_, carryHigh = addWW(carryHigh1, carryHigh2)
+
 	}
 
 	if carryHigh != 0 {
