@@ -39,19 +39,6 @@ type Registry map[string]string
 
 var inputs, outputs Registry
 
-type CountSwapsResults struct {
-	byFirst  int
-	byLast   int
-	byMedian int
-}
-
-type CountSwapsTest struct {
-	input         []int
-	arr           []int
-	actualSwaps   CountSwapsResults
-	expectedSwaps CountSwapsResults
-}
-
 func TestMain(m *testing.M) {
 	inputs = make(Registry)
 	outputs = make(Registry)
@@ -86,6 +73,19 @@ func TestAll(t *testing.T) {
 		}
 		testCountSwaps(inPath, outPath, t)
 	}
+}
+
+type CountSwapsResults struct {
+	byFirst  int
+	byLast   int
+	byMedian int
+}
+
+type CountSwapsTest struct {
+	input         []int
+	arr           []int
+	actualSwaps   CountSwapsResults
+	expectedSwaps CountSwapsResults
 }
 
 func (test *CountSwapsTest) readInput(fpath string) (err error) {
