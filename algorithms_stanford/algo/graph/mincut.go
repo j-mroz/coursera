@@ -78,44 +78,6 @@ func (edges *EdgeList) shuffle(seed int64) {
 	}
 }
 
-type adjHashList map[int][]int
-
-// Connect adds dst edge list to src vertex.
-func (adj adjHashList) Connect(src int, dst ...int) {
-	if _, found := adj[src]; !found {
-		adj[src] = []int{}
-	}
-
-	adj[src] = append(adj[src], dst...)
-}
-
-// Graph is top level abstraction for the graph.
-type Graph struct {
-	adj       adjHashList
-	minVertex int
-	maxVertex int
-}
-
-// New creates a Graph struct
-func New() *Graph {
-	return &Graph{
-		adj:       make(adjHashList),
-		minVertex: math.MaxInt64,
-		maxVertex: 0,
-	}
-}
-
-// Connect adds src vertex to adj list and its outgoing edges.
-func (g *Graph) Connect(src int, dst ...int) {
-	if src <= g.minVertex {
-		g.minVertex = src
-	}
-	if src >= g.maxVertex {
-		g.maxVertex = src
-	}
-	g.adj.Connect(src, dst...)
-}
-
 func (g *Graph) collectUndirectedEdges() (edges EdgeList) {
 	uniqueEdges := make(map[Edge]int)
 

@@ -31,7 +31,7 @@ import (
 	"strconv"
 	"strings"
 
-	"./graph"
+	"../../algo/graph"
 )
 
 func loadGraph(file *os.File) (g graph.Graph, err error) {

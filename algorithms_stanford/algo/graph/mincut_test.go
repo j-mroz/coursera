@@ -49,13 +49,13 @@ func TestEdgeListRemove(t *testing.T) {
 	}
 }
 
-func TestGraphConnect(t *testing.T) {
-	g := New()
-	g.Connect(0, 1, 2, 3)
-	if len(g.adj[0]) != 3 {
-		t.Error("Failed to connect edges")
-	}
-}
+// func TestGraphConnect(t *testing.T) {
+// 	g := New()
+// 	g.Connect(0, 1, 2, 3)
+// 	if len(g.adj[0]) != 3 {
+// 		t.Error("Failed to connect edges")
+// 	}
+// }
 
 func TestCollectUndirectedEdgges(t *testing.T) {
 	g := New()
