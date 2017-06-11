@@ -23,13 +23,13 @@
 
 package graph
 
-// GetScc is Tarjan algorithm of computign SCC:
+// GetSccs is Tarjan algorithm of computign SCC:
 // https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 func (g *Graph) GetSccs() [][]int {
 	scc := sccContext{
-		graph:    g,
-		vertices: make([]sccVertex, len(g.adj)),
-		index:    0,
+		graph:     g,
+		vertices:  make([]sccVertex, len(g.adj)),
+		vistCount: 0,
 	}
 	for vertex := range g.adj {
 		scc.visit(vertex)
@@ -39,17 +39,17 @@ func (g *Graph) GetSccs() [][]int {
 }
 
 type sccVertex struct {
-	index    int
-	lowIndex int
-	onStack  bool
+	index    int  // Preorder index, assined when vertex is visisted by dfs.
+	lowIndex int  // Lowest index reachable from vertex.
+	onStack  bool // True if vetrex is currently on visit stack.
 }
 
 type sccContext struct {
-	graph    *Graph
-	vertices []sccVertex
-	index    int
-	stack    []int
-	groups   [][]int
+	graph     *Graph      // Pointer to original graph.
+	vertices  []sccVertex // Data assosiated with vertices.
+	vistCount int         // Number of nodes visited by DFS.
+	stack     []int       // Vertices visit stack.
+	groups    [][]int     // Strongly connected components groups.
 }
 
 func (scc *sccContext) visit(src int) {
@@ -58,24 +58,25 @@ func (scc *sccContext) visit(src int) {
 	}
 
 	scc.beginVisit(src)
+
+	// Visit all connected vertices and update the lowest reachable vertex.
 	for _, dst := range scc.graph.adj[src] {
 		if !scc.visited(dst) {
 			scc.visit(dst)
-			scc.vertices[src].lowIndex = min(scc.vertices[src].lowIndex,
-				scc.vertices[dst].lowIndex)
+			scc.maybeUpdateLowIndex(src, scc.vertices[dst].lowIndex)
 		} else if scc.onVisitStack(dst) {
-			scc.vertices[src].lowIndex = min(scc.vertices[src].lowIndex,
-				scc.vertices[dst].index)
+			scc.maybeUpdateLowIndex(src, scc.vertices[dst].index)
 		}
 	}
+
 	scc.endVisit(src)
 }
 
 func (scc *sccContext) beginVisit(vertex int) {
-	scc.index++
-	scc.vertices[vertex].index = scc.index
-	scc.vertices[vertex].lowIndex = scc.index
-	scc.push(vertex)
+	scc.vistCount++
+	scc.vertices[vertex].index = scc.vistCount
+	scc.vertices[vertex].lowIndex = scc.vistCount
+	scc.pushVisitStack(vertex)
 }
 
 func (scc *sccContext) endVisit(vertex int) {
@@ -84,9 +85,11 @@ func (scc *sccContext) endVisit(vertex int) {
 		return
 	}
 
+	// Because vertex is root of scc group, collect all vertices from
+	// visit stack as they represent the strongly connected component.
 	var sccGroup []int
 	for {
-		groupMember := scc.pop()
+		groupMember := scc.popVisitStack()
 		sccGroup = append(sccGroup, groupMember)
 		if vertex == groupMember {
 			break
@@ -99,12 +102,12 @@ func (scc *sccContext) visited(vertex int) bool {
 	return scc.vertices[vertex].index != 0
 }
 
-func (scc *sccContext) push(vertex int) {
+func (scc *sccContext) pushVisitStack(vertex int) {
 	scc.stack = append(scc.stack, vertex)
 	scc.vertices[vertex].onStack = true
 }
 
-func (scc *sccContext) pop() int {
+func (scc *sccContext) popVisitStack() int {
 	end := len(scc.stack)
 	top := scc.stack[end-1]
 	scc.stack = scc.stack[:end-1]
@@ -116,9 +119,8 @@ func (scc *sccContext) onVisitStack(vertex int) bool {
 	return scc.vertices[vertex].onStack
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+func (scc *sccContext) maybeUpdateLowIndex(vertex, index int) {
+	if index < scc.vertices[vertex].lowIndex {
+		scc.vertices[vertex].lowIndex = index
 	}
-	return b
 }
