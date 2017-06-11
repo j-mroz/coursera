@@ -62,9 +62,13 @@ func (scc *sccContext) visit(src int) {
 	// Visit all connected vertices and update the lowest reachable vertex.
 	for _, dst := range scc.graph.adj[src] {
 		if !scc.visited(dst) {
+			// If the destination vertex was not visited do it now and check
+			// what is the lowest vetrext it was able to reach.
 			scc.visit(dst)
 			scc.maybeUpdateLowIndex(src, scc.vertices[dst].lowIndex)
 		} else if scc.onVisitStack(dst) {
+			// If the destination vertex was already visited and is on
+			// the visit stack we have a strongly connected component.
 			scc.maybeUpdateLowIndex(src, scc.vertices[dst].index)
 		}
 	}
@@ -80,7 +84,7 @@ func (scc *sccContext) beginVisit(vertex int) {
 }
 
 func (scc *sccContext) endVisit(vertex int) {
-	// Check if is scc group root.
+	// If the node is able to reach itself it's a scc group root.
 	if scc.vertices[vertex].index != scc.vertices[vertex].lowIndex {
 		return
 	}
