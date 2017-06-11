@@ -84,7 +84,9 @@ func (scc *sccContext) beginVisit(vertex int) {
 }
 
 func (scc *sccContext) endVisit(vertex int) {
-	// If the node is able to reach itself it's a scc group root.
+	// At the begining every node low index was set to same value as index.
+	// If it has changed to other value it means that this nodes is not the
+	// scc group root.
 	if scc.vertices[vertex].index != scc.vertices[vertex].lowIndex {
 		return
 	}
