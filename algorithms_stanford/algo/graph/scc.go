@@ -28,10 +28,11 @@ package graph
 func (g *Graph) GetSccs() [][]int {
 	scc := sccContext{
 		graph:     g,
-		vertices:  make([]sccVertex, len(g.adj)),
+		vertices:  make([]sccVertex, g.VertexCount()),
 		vistCount: 0,
 	}
-	for vertex := range g.adj {
+
+	for vertex := range g.adjList {
 		scc.visit(vertex)
 	}
 
@@ -45,7 +46,7 @@ type sccVertex struct {
 }
 
 type sccContext struct {
-	graph     *Graph      // Pointer to original graph.
+	graph     *Graph      // Pointer to original GraphIfc.
 	vertices  []sccVertex // Data assosiated with vertices.
 	vistCount int         // Number of nodes visited by DFS.
 	stack     []int       // Vertices visit stack.
@@ -60,7 +61,8 @@ func (scc *sccContext) visit(src int) {
 	scc.beginVisit(src)
 
 	// Visit all connected vertices and update the lowest reachable vertex.
-	for _, dst := range scc.graph.adj[src] {
+	for _, edge := range scc.graph.adjList[src] {
+		dst := edge.Dst
 		if !scc.visited(dst) {
 			// If the destination vertex was not visited do it now and check
 			// what is the lowest vetrext it was able to reach.

@@ -21,73 +21,52 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package main
+package graph
 
-import (
-	"bufio"
-	"fmt"
-	"io"
-	"log"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
+import "math/rand"
 
-	"../../algo/graph"
-)
-
-func loadGraph(file *os.File) (g *graph.Graph, err error) {
-	g = graph.New()
-
-	reader := bufio.NewReader(file)
-	for {
-		var vertices []int
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return g, err
-		}
-
-		tokens := strings.Fields(line)
-		for _, token := range tokens {
-			vertex, err := strconv.Atoi(token)
-			if err != nil {
-				return g, err
-			}
-			vertices = append(vertices, vertex)
-		}
-		g.Connect(vertices[0], vertices[1:]...)
-	}
-
-	return g, nil
+// Edge consists of Src and Dst vertex indentifiers.
+type Edge struct {
+	Src, Dst int
 }
 
-func main() {
-	g, err := loadGraph(os.Stdin)
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
+// EdgeList is just list of edges, defined for convenience.
+type EdgeList []Edge
 
-	sccGroup := g.GetSccs()
-	sccGroupSizes := make([]int, len(sccGroup))
-	for i, scc := range sccGroup {
-		sccGroupSizes[i] = len(scc)
-	}
-	sort.Ints(sccGroupSizes)
+// Copy inserts new edges into a list from src.
+func (edges *EdgeList) Copy(src EdgeList) {
+	edges.Push(src...)
+}
 
-	firstIdx := len(sccGroupSizes) - 5
-	if firstIdx < 0 {
-		firstIdx = 0
-	}
+// Push inserts new edges into a list
+func (edges *EdgeList) Push(values ...Edge) {
+	*edges = append(*edges, values...)
+}
 
-	for i := len(sccGroupSizes) - 1; i >= firstIdx; i-- {
-		fmt.Print(sccGroupSizes[i])
-		if i > firstIdx {
-			fmt.Print(",")
+// Pop removes last/top element from list anr returns it.
+func (edges *EdgeList) Pop() (last Edge) {
+	lastIdx := len(*edges) - 1
+	last = (*edges)[lastIdx]
+	*edges = (*edges)[:lastIdx]
+	return
+}
+
+// Remove delets edges from the list based on provided predicate function.
+func (edges *EdgeList) Remove(pred func(Edge) bool) {
+	filtered := (*edges)[:0]
+	for _, edge := range *edges {
+		if !pred(edge) {
+			filtered = append(filtered, edge)
 		}
 	}
-	fmt.Println()
+	*edges = filtered
+}
+
+func (edges *EdgeList) shuffle(seed int64) {
+	randGen := rand.New(rand.NewSource(seed))
+	perm := randGen.Perm(len(*edges))
+
+	for i := range perm {
+		(*edges)[i], (*edges)[perm[i]] = (*edges)[perm[i]], (*edges)[i]
+	}
 }

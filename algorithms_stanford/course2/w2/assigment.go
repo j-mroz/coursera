@@ -29,7 +29,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -41,7 +40,6 @@ func loadGraph(file *os.File) (g *graph.Graph, err error) {
 
 	reader := bufio.NewReader(file)
 	for {
-		var vertices []int
 		line, err := reader.ReadString('\n')
 		if err == io.EOF {
 			break
@@ -50,7 +48,14 @@ func loadGraph(file *os.File) (g *graph.Graph, err error) {
 			return g, err
 		}
 
-		tokens := strings.Fields(line)
+		tokens := strings.FieldsFunc(line, func(r rune) bool {
+			return r == ',' || r == '\t'
+		})
+		if tokens[len(tokens)-1] == "\r\n" || tokens[len(tokens)-1] == "\n" {
+			tokens = tokens[:len(tokens)-1]
+		}
+
+		var vertices []int
 		for _, token := range tokens {
 			vertex, err := strconv.Atoi(token)
 			if err != nil {
@@ -58,7 +63,8 @@ func loadGraph(file *os.File) (g *graph.Graph, err error) {
 			}
 			vertices = append(vertices, vertex)
 		}
-		g.Connect(vertices[0], vertices[1:]...)
+
+		g.ConnectWeighted(vertices[0], vertices[1:]...)
 	}
 
 	return g, nil
@@ -71,23 +77,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	sccGroup := g.GetSccs()
-	sccGroupSizes := make([]int, len(sccGroup))
-	for i, scc := range sccGroup {
-		sccGroupSizes[i] = len(scc)
-	}
-	sort.Ints(sccGroupSizes)
+	srcVertex := 1
+	dist := g.DijkstraShortestPath(srcVertex)
 
-	firstIdx := len(sccGroupSizes) - 5
-	if firstIdx < 0 {
-		firstIdx = 0
-	}
-
-	for i := len(sccGroupSizes) - 1; i >= firstIdx; i-- {
-		fmt.Print(sccGroupSizes[i])
-		if i > firstIdx {
-			fmt.Print(",")
-		}
+	dstVertices := []int{7, 37, 59, 82, 99, 115, 133, 165, 188, 197}
+	for _, dst := range dstVertices {
+		fmt.Print(dist[dst], ",")
 	}
 	fmt.Println()
 }

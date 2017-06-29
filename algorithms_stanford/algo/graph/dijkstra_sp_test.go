@@ -20,74 +20,33 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-package main
+package graph
 
 import (
-	"bufio"
-	"fmt"
-	"io"
-	"log"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-
-	"../../algo/graph"
+	"testing"
 )
 
-func loadGraph(file *os.File) (g *graph.Graph, err error) {
-	g = graph.New()
+func TestVertexHeap(t *testing.T) {
+	h := newVertexHeap(10)
+	h.PushVertex(105, 5)
+	h.PushVertex(108, 8)
+	h.PushVertex(103, 3)
+	h.PushVertex(101, 1)
+	h.PushVertex(104, 4)
+	h.PushVertex(107, 7)
+	h.PushVertex(102, 2)
+	h.PushVertex(109, 9)
+	h.PushVertex(106, 6)
 
-	reader := bufio.NewReader(file)
-	for {
-		var vertices []int
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			break
+	if h.Len() != 9 {
+		t.Error("heap size is too small, expected 9, got", h.Len())
+	}
+	expected := 101
+	for h.Len() > 0 {
+		top := h.PopVertex()
+		if top != expected {
+			t.Error("expected", expected, "got", top)
 		}
-		if err != nil {
-			return g, err
-		}
-
-		tokens := strings.Fields(line)
-		for _, token := range tokens {
-			vertex, err := strconv.Atoi(token)
-			if err != nil {
-				return g, err
-			}
-			vertices = append(vertices, vertex)
-		}
-		g.Connect(vertices[0], vertices[1:]...)
+		expected++
 	}
-
-	return g, nil
-}
-
-func main() {
-	g, err := loadGraph(os.Stdin)
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-
-	sccGroup := g.GetSccs()
-	sccGroupSizes := make([]int, len(sccGroup))
-	for i, scc := range sccGroup {
-		sccGroupSizes[i] = len(scc)
-	}
-	sort.Ints(sccGroupSizes)
-
-	firstIdx := len(sccGroupSizes) - 5
-	if firstIdx < 0 {
-		firstIdx = 0
-	}
-
-	for i := len(sccGroupSizes) - 1; i >= firstIdx; i-- {
-		fmt.Print(sccGroupSizes[i])
-		if i > firstIdx {
-			fmt.Print(",")
-		}
-	}
-	fmt.Println()
 }

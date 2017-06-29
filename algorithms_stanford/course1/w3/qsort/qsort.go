@@ -78,16 +78,18 @@ func CountSwapsByMedian(arr sort.Interface) (swaps int) {
 	return
 }
 
-func quickSortImpl(arr sort.Interface, start, end int, partionPivot PartitionStrategy) (swaps int) {
+func quickSortImpl(arr sort.Interface, start, end int, getPartionPivot PartitionStrategy) (swaps int) {
 	if !(start < end) {
 		return
 	}
 
-	pivot := partionPivot(arr, start, end)
-	pivot = partitionLeftToRight(arr, start, pivot, end)
+	pivot := getPartionPivot(arr, start, end)
+	// pivot = partitionLeftToRight(arr, start, pivot, end)
+	pivot = partitionTwoSide(arr, start, pivot, end)
+
 	swaps = end - start - 1
-	swaps += quickSortImpl(arr, start, pivot, partionPivot)
-	swaps += quickSortImpl(arr, pivot+1, end, partionPivot)
+	swaps += quickSortImpl(arr, start, pivot, getPartionPivot)
+	swaps += quickSortImpl(arr, pivot+1, end, getPartionPivot)
 
 	return
 }
