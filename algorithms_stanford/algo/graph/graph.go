@@ -30,7 +30,8 @@ type Graph struct {
 	adjList      AdjList
 	minVertex    int
 	maxVertex    int
-	edgesWeights map[Edge]int
+	edgesWeights map[int]int
+	edgeCount    uint
 }
 
 // New creates a Graph struct
@@ -39,7 +40,7 @@ func New() *Graph {
 		adjList:      make(AdjList, 0, 32),
 		minVertex:    math.MaxInt64,
 		maxVertex:    0,
-		edgesWeights: make(map[Edge]int),
+		edgesWeights: make(map[int]int),
 	}
 }
 
@@ -58,8 +59,10 @@ func (g *Graph) Connect(src int, dst ...int) {
 func (g *Graph) ConnectWeighted(src int, dstWeightPairs ...int) {
 	for i := 0; i < len(dstWeightPairs); i += 2 {
 		dst, weight := dstWeightPairs[i], dstWeightPairs[i+1]
-		g.Connect(src, dstWeightPairs[i])
-		g.edgesWeights[Edge{src, dst}] = weight
+		g.Connect(src, dst)
+		vertexID := len(g.edgesWeights)
+		g.adjList[src][len(g.adjList[src])-1].ID = vertexID
+		g.edgesWeights[vertexID] = weight
 	}
 }
 
@@ -79,7 +82,7 @@ func (adj *AdjList) Connect(src int, dstList ...int) {
 	}
 	dstEdges := make(EdgeList, len(dstList))
 	for i, dst := range dstList {
-		dstEdges[i] = Edge{src, dst}
+		dstEdges[i] = Edge{Src: src, Dst: dst}
 	}
 	(*adj)[src] = append((*adj)[src], dstEdges...)
 }

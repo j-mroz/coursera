@@ -27,7 +27,7 @@ import "math/rand"
 
 // Edge consists of Src and Dst vertex indentifiers.
 type Edge struct {
-	Src, Dst int
+	Src, Dst, ID int
 }
 
 // EdgeList is just list of edges, defined for convenience.

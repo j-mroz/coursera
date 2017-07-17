@@ -83,8 +83,11 @@ func (h *vertexHeap) PopVertex() int {
 	return heap.Pop(h).(vertexHeapElement).vertex
 }
 
-func (h *vertexHeap) UpdateVertex(vertex int, weight uint) {
-	index := h.indices[vertex]
+func (h *vertexHeap) MaybeUpdateVertex(vertex int, weight uint) {
+	index, ok := h.indices[vertex]
+	if !ok {
+		return
+	}
 	h.elements[index].weight = weight
 	heap.Fix(h, index)
 }
@@ -93,6 +96,7 @@ func (h *vertexHeap) UpdateVertex(vertex int, weight uint) {
 func (g *Graph) DijkstraShortestPath(sourceVertex int) []uint {
 	// Initialize distances from sourceVertex
 	dist := make([]uint, g.VertexCount())
+	prev := make([]int, g.VertexCount())
 	for vertex := range dist {
 		dist[vertex] = infinity
 	}
@@ -109,10 +113,15 @@ func (g *Graph) DijkstraShortestPath(sourceVertex int) []uint {
 	for heap.Len() > 0 {
 		vertex := heap.PopVertex()
 		for _, edge := range g.adjList[vertex] {
-			weight := g.edgesWeights[edge]
+			weight := g.edgesWeights[edge.ID]
+			// if src is infinity away than no route is know to src from start
+			if dist[edge.Src] == infinity {
+				continue
+			}
 			if dist[edge.Src]+uint(weight) < dist[edge.Dst] {
 				dist[edge.Dst] = dist[edge.Src] + uint(weight)
-				heap.UpdateVertex(edge.Dst, dist[edge.Dst])
+				heap.MaybeUpdateVertex(edge.Dst, dist[edge.Dst])
+				prev[edge.Dst] = edge.Src
 			}
 		}
 	}

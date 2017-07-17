@@ -29,7 +29,7 @@ import (
 
 func TestEdgeListPush(t *testing.T) {
 	lst := EdgeList{}
-	lst.Push(Edge{0, 1}, Edge{1, 2}, Edge{2, 0})
+	lst.Push(Edge{Src: 0, Dst: 1}, Edge{Src: 1, Dst: 2}, Edge{Src: 2, Dst: 0})
 
 	if len(lst) != 3 {
 		t.Error("Failed to add edges")
@@ -38,7 +38,7 @@ func TestEdgeListPush(t *testing.T) {
 
 func TestEdgeListRemove(t *testing.T) {
 	lst := EdgeList{}
-	lst.Push(Edge{0, 0}, Edge{0, 1}, Edge{1, 2}, Edge{2, 0})
+	lst.Push(Edge{Src: 0, Dst: 0}, Edge{Src: 0, Dst: 1}, Edge{Src: 1, Dst: 2}, Edge{Src: 2, Dst: 0})
 
 	lst.Remove(func(e Edge) bool {
 		return e.Src == e.Dst
@@ -48,14 +48,6 @@ func TestEdgeListRemove(t *testing.T) {
 		t.Error("Failed to remove edge")
 	}
 }
-
-// func TestGraphConnect(t *testing.T) {
-// 	g := New()
-// 	g.Connect(0, 1, 2, 3)
-// 	if len(g.adj[0]) != 3 {
-// 		t.Error("Failed to connect edges")
-// 	}
-// }
 
 func TestCollectUndirectedEdgges(t *testing.T) {
 	g := New()

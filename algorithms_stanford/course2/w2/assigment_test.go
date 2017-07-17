@@ -25,64 +25,75 @@ package main
 
 import (
 	"bufio"
-	"fmt"
-	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
+	"testing"
 
-	"../../algo/graph"
+	"../../utils"
 )
 
-func loadGraph(file *os.File) (g *graph.Graph, err error) {
-	g = graph.New()
+var testInputs, testOutputs utils.TestCasesFilesMap
 
-	reader := bufio.NewReader(file)
-	for {
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return g, err
-		}
+func TestMain(m *testing.M) {
+	testInputs, testOutputs = utils.LoadTestCases("_random_")
 
-		tokens := strings.FieldsFunc(line, func(r rune) bool {
-			return r == ',' || r == '\t' || r == '\n'
-		})
-		if tokens[len(tokens)-1] == "\r\n" || tokens[len(tokens)-1] == "\n" {
-			tokens = tokens[:len(tokens)-1]
-		}
-
-		var vertices []int
-		for _, token := range tokens {
-			vertex, err := strconv.Atoi(token)
-			if err != nil {
-				return g, err
-			}
-			vertices = append(vertices, vertex)
-		}
-
-		g.ConnectWeighted(vertices[0], vertices[1:]...)
-	}
-
-	return g, nil
+	// Tun tests.
+	ret := m.Run()
+	os.Exit(ret)
 }
 
-func main() {
-	g, err := loadGraph(os.Stdin)
+func TestAll(t *testing.T) {
+	for testID, inPath := range testInputs {
+		if outPath, ok := testOutputs[testID]; ok {
+			testDijkstraShortestPath(inPath, outPath, t)
+		}
+	}
+}
+
+func loadExpectedPathsLength(file *os.File) (dist []uint, err error) {
+	reader := bufio.NewReader(file)
+	line, _ := reader.ReadString('\n')
+	tokens := strings.FieldsFunc(line, func(r rune) bool {
+		return r == ',' || r == '\n'
+	})
+	for _, token := range tokens {
+		num, err := strconv.Atoi(token)
+		if err != nil {
+			break
+		}
+		dist = append(dist, uint(num))
+	}
+	return
+}
+
+func testDijkstraShortestPath(inPath, outPath string, t *testing.T) {
+	inFile, err := os.Open(inPath)
 	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
+		t.Error(err)
+	}
+	g, err := loadGraph(inFile)
+	if err != nil {
+		t.Error(err)
+	}
+
+	outFile, err := os.Open(outPath)
+	if err != nil {
+		t.Error(err)
+	}
+	expectedDist, err := loadExpectedPathsLength(outFile)
+	if err != nil {
+		t.Error(err)
 	}
 
 	srcVertex := 1
 	dist := g.DijkstraShortestPath(srcVertex)
 
 	dstVertices := []int{7, 37, 59, 82, 99, 115, 133, 165, 188, 197}
-	for _, dst := range dstVertices {
-		fmt.Print(dist[dst], ",")
+	for i, dst := range dstVertices {
+		if dist[dst] != expectedDist[i] {
+			t.Error(inPath, outPath, dist[dst], "!=", expectedDist[i])
+		}
 	}
-	fmt.Println()
+
 }
