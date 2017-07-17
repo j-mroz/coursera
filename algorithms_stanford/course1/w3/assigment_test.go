@@ -27,47 +27,24 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
+	"../../utils"
 	"./qsort"
 )
 
-type Registry map[string]string
-
-var inputs, outputs Registry
+var testInputs, testOutputs utils.TestCasesFilesMap
 
 func TestMain(m *testing.M) {
-	inputs = make(Registry)
-	outputs = make(Registry)
-
-	// Setup test cases by reading input and output test files.
-	files, _ := filepath.Glob("testcases/*_dgrcode_*")
-	for _, fpath := range files {
-		fname := strings.Replace(fpath, "testcases/", "", 1)
-		tokens := strings.Split(fname, "_dgrcode_")
-
-		ftype := tokens[0]
-		testid := strings.Replace(tokens[1], ".txt", "", 1)
-
-		switch ftype {
-		case "input":
-			inputs[testid] = fpath
-		case "output":
-			outputs[testid] = fpath
-		}
-	}
-
-	// Tun tests.
+	testInputs, testOutputs = utils.LoadTestCases("_dgrcode_")
 	ret := m.Run()
 	os.Exit(ret)
 }
 
 func TestAll(t *testing.T) {
-	for id, inPath := range inputs {
-		outPath, found := outputs[id]
+	for id, inPath := range testInputs {
+		outPath, found := testOutputs[id]
 		if !found {
 			continue
 		}

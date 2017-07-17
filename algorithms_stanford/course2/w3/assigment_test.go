@@ -28,48 +28,24 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"../../utils"
 )
 
-type TestFilesMap map[string]string
-
-var inputs, outputs TestFilesMap
+var testInputs, testOutputs utils.TestCasesFilesMap
 
 func TestMain(m *testing.M) {
-	loadTestCases()
+	testInputs, testOutputs = utils.LoadTestCases("_random_")
 
 	// Tun tests.
 	ret := m.Run()
 	os.Exit(ret)
 }
 
-func loadTestCases() {
-	inputs = make(TestFilesMap)
-	outputs = make(TestFilesMap)
-
-	// Setup test cases by reading input and output test files.
-	files, _ := filepath.Glob("testcases/*_random_*")
-	for _, fpath := range files {
-		fname := strings.Replace(fpath, "testcases/", "", 1)
-		tokens := strings.Split(fname, "_random_")
-
-		ftype := tokens[0]
-		testid := strings.Replace(tokens[1], ".txt", "", 1)
-
-		switch ftype {
-		case "input":
-			inputs[testid] = fpath
-		case "output":
-			outputs[testid] = fpath
-		}
-	}
-}
-
 func TestAll(t *testing.T) {
-	for testID, inPath := range inputs {
-		if outPath, ok := outputs[testID]; ok {
+	for testID, inPath := range testInputs {
+		if outPath, ok := testOutputs[testID]; ok {
 			testMedianHeap(inPath, outPath, t)
 		}
 	}

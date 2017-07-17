@@ -20,70 +20,35 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-package main
+package utils
 
 import (
-	"fmt"
-	"os"
-	"testing"
-
-	"../../utils"
+	"path/filepath"
+	"strings"
 )
 
-var testInputs, testOutputs utils.TestCasesFilesMap
+type TestCasesFilesMap map[string]string
 
-func TestMain(m *testing.M) {
-	testInputs, testOutputs = utils.LoadTestCases("_random_")
+// LoadTestCases loads testcases from testcases subdir.
+func LoadTestCases(pattern string) (inputs, outputs TestCasesFilesMap) {
+	inputs = make(TestCasesFilesMap)
+	outputs = make(TestCasesFilesMap)
 
-	// Tun tests.
-	ret := m.Run()
-	os.Exit(ret)
-}
+	// Setup test cases by reading input and output test files.
+	files, _ := filepath.Glob("testcases/*" + pattern + "*")
+	for _, fpath := range files {
+		fname := strings.Replace(fpath, "testcases/", "", 1)
+		tokens := strings.Split(fname, pattern)
 
-func TestAll(t *testing.T) {
-	for testID, inPath := range testInputs {
-		outPath, found := testOutputs[testID]
-		if found {
-			testMinCut(inPath, outPath, t)
+		ftype := tokens[0]
+		testid := strings.Replace(tokens[1], ".txt", "", 1)
+
+		switch ftype {
+		case "input":
+			inputs[testid] = fpath
+		case "output":
+			outputs[testid] = fpath
 		}
 	}
-}
-
-func testMinCut(inPath, outPath string, t *testing.T) {
-	file, err := os.Open(inPath)
-	if err != nil {
-		t.Error(err)
-	}
-	defer file.Close()
-
-	g, err := loadGraph(file)
-	if err != nil {
-		t.Error(err)
-	}
-
-	expectedMinCut, err := loadExpectedOutput(outPath)
-	if err != nil {
-		t.Error(err)
-	}
-
-	minCutEdges := g.MinCut()
-	minCut := len(minCutEdges)
-
-	if minCut != expectedMinCut {
-		t.Errorf("%s: MinCut: got %d, expected %d.\n", inPath, minCut, expectedMinCut)
-	}
-}
-
-func loadExpectedOutput(fpath string) (expected int, err error) {
-	fd, err := os.Open(fpath)
-	if err != nil {
-		return 0, err
-	}
-	defer fd.Close()
-
-	// Read output.
-	fmt.Fscanf(fd, "%d", &expected)
-
-	return expected, nil
+	return
 }
