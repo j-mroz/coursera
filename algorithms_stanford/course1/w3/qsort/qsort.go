@@ -84,8 +84,8 @@ func quickSortImpl(arr sort.Interface, start, end int, getPartionPivot Partition
 	}
 
 	pivot := getPartionPivot(arr, start, end)
-	// pivot = partitionLeftToRight(arr, start, pivot, end)
-	pivot = partitionTwoSide(arr, start, pivot, end)
+	pivot = partitionLeftToRight(arr, start, pivot, end)
+	// pivot = partitionTwoSide(arr, start, pivot, end)
 
 	swaps = end - start - 1
 	swaps += quickSortImpl(arr, start, pivot, getPartionPivot)
