@@ -32,15 +32,15 @@ import (
 
 // MedianHeap is a type that supports gettign median in O(1) time.
 type MedianHeap struct {
-	low  IntMinMaxHeap
-	high IntMinMaxHeap
+	low  IntHeap // low contains median and lower elements.
+	high IntHeap // high contains element higher than median.
 }
 
 // NewMedianHeap creates new MedianHeap.
 func NewMedianHeap() *MedianHeap {
 	return &MedianHeap{
-		low:  IntMinMaxHeap{minHeap: false},
-		high: IntMinMaxHeap{minHeap: true},
+		low:  *newIntMaxHeap(),
+		high: *newIntMinHeap(),
 	}
 }
 
@@ -64,31 +64,46 @@ func (h *MedianHeap) Median() int {
 	return h.low.elements[0]
 }
 
-type IntMinMaxHeap struct {
+// IntHeap is a heap of ints.
+type IntHeap struct {
 	elements []int
-	minHeap  bool
+	cmp      func(a, b int) bool
 }
 
-func (h IntMinMaxHeap) Len() int {
+func newIntMinHeap() *IntHeap {
+	return &IntHeap{
+		cmp: func(a, b int) bool { return a < b },
+	}
+}
+
+func newIntMaxHeap() *IntHeap {
+	return &IntHeap{
+		cmp: func(a, b int) bool { return a > b },
+	}
+}
+
+// Len is heap.Interface method.
+func (h IntHeap) Len() int {
 	return len(h.elements)
 }
 
-func (h IntMinMaxHeap) Less(i, j int) bool {
-	if h.minHeap {
-		return h.elements[i] < h.elements[j]
-	}
-	return h.elements[i] > h.elements[j]
+// Less is heap.Interface method.
+func (h IntHeap) Less(i, j int) bool {
+	return h.cmp(h.elements[i], h.elements[j])
 }
 
-func (h IntMinMaxHeap) Swap(i, j int) {
+// Swap is heap.Interface method.
+func (h IntHeap) Swap(i, j int) {
 	h.elements[i], h.elements[j] = h.elements[j], h.elements[i]
 }
 
-func (h *IntMinMaxHeap) Push(val interface{}) {
+// Push is heap.Interface method.
+func (h *IntHeap) Push(val interface{}) {
 	h.elements = append(h.elements, val.(int))
 }
 
-func (h *IntMinMaxHeap) Pop() interface{} {
+// Pop is heap.Interface method.
+func (h *IntHeap) Pop() interface{} {
 	size := len(h.elements)
 	top := h.elements[size-1]
 	h.elements = h.elements[:size-1]
@@ -105,7 +120,7 @@ func main() {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			log.Fatal("Wrong input")
+			log.Fatal("Wrong input:", err)
 		}
 		numbers = append(numbers, num)
 	}
