@@ -8,10 +8,8 @@ import (
 )
 
 func main() {
-
-	// numbers := make(map[int]int)
+	// Read and sort the input numbers.
 	numbers := make([]int, 0, 1000000)
-	targets := make(map[int]int)
 	for {
 		var num int
 		_, err := fmt.Scanf("%d\n", &num)
@@ -20,12 +18,12 @@ func main() {
 		} else if err != nil {
 			log.Fatal("Wrong input")
 		}
-		// numbers[num]++
 		numbers = append(numbers, num)
 	}
-
 	sort.Ints(numbers)
 
+	// Gather all possible target sums where |x + y| <- [0, 10000], x != y
+	targets := make(map[int]int)
 	for _, x := range numbers {
 		lo := sort.SearchInts(numbers, -10000-x)
 		hi := sort.SearchInts(numbers, 10000-x)
