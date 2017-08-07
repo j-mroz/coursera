@@ -23,15 +23,27 @@
 
 package graph
 
-import "math"
+import (
+	"math"
+)
+
+const infinity = math.MaxInt64
 
 // Graph is top level abstraction for the graph.
 type Graph struct {
 	adjList      AdjList
 	minVertex    int
 	maxVertex    int
+	vertices     map[int]bool
 	edgesWeights map[int]int
 	edgeCount    uint
+}
+
+// WeightedEdgesView is an interface fo accessing edges list in some graph algorithms.
+type WeightedEdgesView interface {
+	GetWeightedEdges() []WeightedEdge
+	GetMinVertex() int
+	GetMaxVertex() int
 }
 
 // New creates a Graph struct
@@ -40,6 +52,7 @@ func New() *Graph {
 		adjList:      make(AdjList, 0, 32),
 		minVertex:    math.MaxInt64,
 		maxVertex:    0,
+		vertices:     make(map[int]bool),
 		edgesWeights: make(map[int]int),
 	}
 }
@@ -52,6 +65,10 @@ func (g *Graph) Connect(src int, dst ...int) {
 	if src >= g.maxVertex {
 		g.maxVertex = src
 	}
+	g.vertices[src] = true
+	for _, vertex := range dst {
+		g.vertices[vertex] = true
+	}
 	g.adjList.Connect(src, dst...)
 }
 
@@ -59,7 +76,9 @@ func (g *Graph) Connect(src int, dst ...int) {
 func (g *Graph) ConnectWeighted(src int, dstWeightPairs ...int) {
 	for i := 0; i < len(dstWeightPairs); i += 2 {
 		dst, weight := dstWeightPairs[i], dstWeightPairs[i+1]
+
 		g.Connect(src, dst)
+
 		vertexID := len(g.edgesWeights)
 		g.adjList[src][len(g.adjList[src])-1].ID = vertexID
 		g.edgesWeights[vertexID] = weight
@@ -69,6 +88,43 @@ func (g *Graph) ConnectWeighted(src int, dstWeightPairs ...int) {
 // VertexCount returns number of vertices.
 func (g *Graph) VertexCount() int {
 	return len(g.adjList)
+}
+
+// Contains returns true if vertex exists in graph.
+func (g *Graph) Contains(vertex int) bool {
+	_, contains := g.vertices[vertex]
+	return contains
+}
+
+func (g *Graph) GetMinVertex() int {
+	return g.minVertex
+}
+
+func (g *Graph) GetMaxVertex() int {
+	return g.maxVertex
+}
+
+func (g *Graph) GetWeightedEdges() (ret []WeightedEdge) {
+	// Count all directed edges.
+	uniqueEdges := make(map[WeightedEdge]int)
+	for _, edges := range g.adjList {
+		for _, edge := range edges {
+			if edge.Dst < edge.Src {
+				edge.Src, edge.Dst = edge.Dst, edge.Src
+			}
+			wEdge := WeightedEdge{edge.Src, edge.Dst, g.edgesWeights[edge.ID]}
+			uniqueEdges[wEdge]++
+		}
+	}
+
+	// Add unique, undirected edges to list. Possible duplicates.
+	for wEdge, count := range uniqueEdges {
+		for i := 0; i < count/2; i++ {
+			ret = append(ret, wEdge)
+		}
+	}
+
+	return
 }
 
 // AdjList implement adjacency list representation of a graph.

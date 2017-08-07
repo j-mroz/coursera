@@ -21,41 +21,43 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package graph
+package main
 
-// DijkstraShortestPath calculates shortest path from source vertex to all vertices.
-func (g *Graph) DijkstraShortestPath(sourceVertex int) []int {
-	// Initialize distances from sourceVertex
-	dist := make([]int, g.VertexCount())
-	prev := make([]int, g.VertexCount())
-	for vertex := range dist {
-		dist[vertex] = infinity
-	}
-	dist[sourceVertex] = 0
+import (
+	"fmt"
+	"os"
 
-	// Add all vertices to the unvisited heap/set.
-	heap := newVertexHeap(g.VertexCount())
+	"../../../algo/graph"
+)
 
-	for vertex := range g.adjList {
-		heap.PushVertex(vertex, dist[vertex])
-	}
+func loadGraph(file *os.File) (g *graph.Graph) {
+	g = graph.New()
 
-	// Pop the nearest vertex from the heap untill all are visited.
-	for heap.Len() > 0 {
-		vertex := heap.PopVertex()
-		for _, edge := range g.adjList[vertex] {
-			weight := g.edgesWeights[edge.ID]
-			// if src is infinity away than no route is know to src from start
-			if dist[edge.Src] == infinity {
-				continue
-			}
-			if dist[edge.Src]+weight < dist[edge.Dst] {
-				dist[edge.Dst] = dist[edge.Src] + weight
-				heap.MaybeUpdateVertex(edge.Dst, dist[edge.Dst])
-				prev[edge.Dst] = edge.Src
-			}
-		}
+	vertexCount, edgeCount := 0, 0
+	fmt.Fscanf(file, "%d %d\n", &vertexCount, &edgeCount)
+
+	for edgeIdx := 0; edgeIdx < edgeCount; edgeIdx++ {
+		src, dst, weight := -1, -1, 0
+		fmt.Fscanf(file, "%d %d %d\n", &src, &dst, &weight)
+		g.ConnectWeighted(src, dst, weight)
+		g.ConnectWeighted(dst, src, weight)
 	}
 
-	return dist
+	return
+}
+
+func main() {
+	g := loadGraph(os.Stdin)
+
+	// Compute spanning three starting from vertex 1.
+	// Save the weights of edges from MST.
+	srcVertex := 1
+	mst := g.PrimMinimumSpanningTree(srcVertex)
+
+	// Print the cumulated weights of MST.
+	distSum := 0
+	for _, dist := range mst.DistanceMap {
+		distSum += dist
+	}
+	fmt.Println(distSum)
 }
