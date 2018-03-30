@@ -58,13 +58,13 @@ type Clusters struct {
 
 // GetMaxSpacingClusters - compute clusters using Kruskal minimum spanning tree
 // algorithm with k limit.
-func (g *Graph) GetMaxSpacingClusters(k int) (spanningTrees []SpanningTree) {
+func (g *Graph) GetMaxSpacingClusters(k int) Clusters {
 	return GetMaxSpacingClusters(g, k)
 }
 
 // GetMaxSpacingClusters - compute clusters using Kruskal minimum spanning tree
 // algorithm with k limit.
-func GetMaxSpacingClusters(wev WeightedEdgesView, k int) (spanningTrees []SpanningTree) {
+func GetMaxSpacingClusters(wev WeightedEdgesView, k int) Clusters {
 	verticesGroups := disjointset.New(wev.GetMinVertex(), wev.GetMaxVertex())
 	edges := wev.GetWeightedEdges()
 	sort.Sort(byEdgeWeight(edges))
@@ -76,5 +76,8 @@ func GetMaxSpacingClusters(wev WeightedEdgesView, k int) (spanningTrees []Spanni
 		verticesGroups.Unite(edge.Src, edge.Dst)
 	}
 
-	return
+	return Clusters{
+		VerticesGroups: verticesGroups,
+		Edges:          edges,
+	}
 }
