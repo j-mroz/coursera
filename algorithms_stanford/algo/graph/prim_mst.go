@@ -48,7 +48,7 @@ func (g *Graph) PrimMinimumSpanningTree(sourceVertex int) (mst SpanningTree) {
 	distArr[sourceVertex] = 0
 
 	// Add all vertices to the unvisited heap/set.
-	unvisited := newVertexHeap(g.VertexCount())
+	unvisited := newVertexHeap()
 	for vertex := range g.adjList {
 		unvisited.PushVertex(vertex, distArr[vertex])
 	}

@@ -35,7 +35,7 @@ type vertexHeap struct {
 	indices  map[int]int
 }
 
-func newVertexHeap(cap int) *vertexHeap {
+func newVertexHeap() *vertexHeap {
 	vertexHeap := &vertexHeap{
 		indices: make(map[int]int),
 	}

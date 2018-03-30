@@ -27,7 +27,7 @@ import (
 )
 
 func TestVertexHeap(t *testing.T) {
-	h := newVertexHeap(10)
+	h := newVertexHeap()
 	h.PushVertex(105, 5)
 	h.PushVertex(108, 8)
 	h.PushVertex(103, 3)

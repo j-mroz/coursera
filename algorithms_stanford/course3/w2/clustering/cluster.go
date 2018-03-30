@@ -21,41 +21,52 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package graph
+package main
 
-// DijkstraShortestPath calculates shortest path from source vertex to all vertices.
-func (g *Graph) DijkstraShortestPath(sourceVertex int) []int {
-	// Initialize distances from sourceVertex
-	dist := make([]int, g.VertexCount())
-	prev := make([]int, g.VertexCount())
-	for vertex := range dist {
-		dist[vertex] = infinity
+import (
+	"fmt"
+	"io"
+	"math"
+	"os"
+
+	"../../../algo/graph"
+)
+
+func loadGraph(file *os.File) (g *graph.Graph) {
+	g = graph.New()
+
+	vertexCount := 0
+	fmt.Fscanf(file, "%d %d\n", &vertexCount)
+
+	for {
+		src, dst, weight := -1, -1, 0
+		_, err := fmt.Fscanf(file, "%d %d %d\n", &src, &dst, &weight)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Fprintln(os.Stderr, "Failed to read input grap")
+			panic(err)
+		}
+
+		g.ConnectWeighted(src, dst, weight)
+		g.ConnectWeighted(dst, src, weight)
 	}
-	dist[sourceVertex] = 0
 
-	// Add all vertices to the unvisited heap/set.
-	heap := newVertexHeap()
+	return
+}
 
-	for vertex := range g.adjList {
-		heap.PushVertex(vertex, dist[vertex])
-	}
+func main() {
+	g := loadGraph(os.Stdin)
+	c := g.GetMaxSpacingClusters(4)
 
-	// Pop the nearest vertex from the heap untill all are visited.
-	for heap.Len() > 0 {
-		vertex := heap.PopVertex()
-		for _, edge := range g.adjList[vertex] {
-			weight := g.edgesWeights[edge.ID]
-			// if src is infinity away than no route is know to src from start
-			if dist[edge.Src] == infinity {
-				continue
-			}
-			if dist[edge.Src]+weight < dist[edge.Dst] {
-				dist[edge.Dst] = dist[edge.Src] + weight
-				heap.MaybeUpdateVertex(edge.Dst, dist[edge.Dst])
-				prev[edge.Dst] = edge.Src
+	minDist := math.MaxInt64
+	for _, edge := range c.Edges {
+		if c.VerticesGroups.Find(edge.Src) != c.VerticesGroups.Find(edge.Dst) {
+			if edge.Weight < minDist {
+				minDist = edge.Weight
 			}
 		}
 	}
 
-	return dist
+	fmt.Println(minDist)
 }
